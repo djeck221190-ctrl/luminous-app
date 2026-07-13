@@ -35,6 +35,14 @@ var savedLayout = {};
 
 var compactMode = false;
 
+var appSettings = {
+    accounts: [],
+    banks: [],
+    types: ['Доход', 'Расход'],
+    currencies: ['RUB'],
+    colors: []
+};
+
 var emojis = ['😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊','😋','😎','😍','🥰','😘','😗','😙','😚','☺️','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','🙄','😏','😣','😥','😮','🤐','😯','😪','😫','😴','😌','😛','😜','😝','🤤','😒','😓','😔','😕','🙃','🤑','😲','☹️','🙁','😖','😞','😟','😤','😢','😭','😦','😧','😨','😩','🤯','😬','😰','😱','🥵','🥶','😳','🤪','😵','😡','😠','🤬','🍎','🍕','🍔','🍟','🌭','🍿','🧇','🥞','🧁','🍩','🍪','☕','🥤','🧃','🍷','🍺','🍻','🥂','🍾','🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛹','✈️','🛩️','🛫','🛬','🚁','🚟','🚠','🚡','🚀','🛸','🎮','🎲','🎯','🎳','🎪','🎨','🎭','🎤','🎧','🎼','🎹','🥁','🎸','🎺','🎻','🏀','🏈','⚽','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🏒','🏑','🥍','🏏','👕','👖','👗','👘','👙','👚','👛','👜','👝','🎒','👞','👟','🥾','🥿','👠','👡','👢','💎','📿','💄','💍','💅','💪','🦷','🦴','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚭','🔞','📵','🚱','🔱','⚠️','🚸','⛽','🛢️','♿','🛗','🔄','🔃','🔄','🔙','🔚','🔛','🔜','🔝','🛐','🕋','🕌','🛕','🛤️','🛣️','🗾','🗺️','🌍','🌎','🌏','🌐','🗿','🪦','🪔','🪬','🪭','🪩','🪟','🪑','🪞','🪝','🪢','🧶','🧵','🪡','🪣','🧹','🧺','🧻','🧼','🧽','🪥','🧴','🪒','🧷','🧸','🪀','🪁','🧿','🪆','🧩','🪅','🧯','🪄','🪩','🧬','🧫','🧪','🔬','🔭','📡','💉','🩸','🩹','🩺','🪨','🧱'];
 
 // ============================================
@@ -171,6 +179,27 @@ function toggleCompactMode() {
     updateDashboardYearly(allData);
     updateExtraCharts(allData);
   }
+}
+
+// ============================================
+// ЗАГРУЗКА НАСТРОЕК ИЗ FIRESTORE
+// ============================================
+
+async function loadAppSettings() {
+    try {
+        var settingsDoc = await db.collection('settings').doc('default').get();
+        if (settingsDoc.exists) {
+            var data = settingsDoc.data();
+            appSettings.accounts = data.accounts || [];
+            appSettings.banks = data.banks || [];
+            appSettings.types = data.types || ['Доход', 'Расход'];
+            appSettings.currencies = data.currencies || ['RUB'];
+            appSettings.colors = data.colors || [];
+            console.log('✅ Настройки загружены:', appSettings);
+        }
+    } catch (error) {
+        console.warn('Ошибка загрузки настроек:', error);
+    }
 }
 
 // ============================================
@@ -842,6 +871,10 @@ async function loadData() {
   }
 
   try {
+    // Загружаем настройки
+    await loadAppSettings();
+    
+    // Загружаем транзакции
     var snapshot = await db.collection('transactions')
       .where('userId', '==', currentUser.login)
       .orderBy('date', 'desc')
@@ -854,6 +887,7 @@ async function loadData() {
     allTx = tx;
     allData = processData(tx);
     
+    // Загружаем категории
     var catSnapshot = await db.collection('categories')
       .where('userId', '==', currentUser.login)
       .get();
@@ -989,7 +1023,7 @@ function processData(transactions) {
 }
 
 // ============================================
-// POPULATE SELECTS
+// POPULATE SELECTS (С ИСПОЛЬЗОВАНИЕМ НАСТРОЕК)
 // ============================================
 function populateSelects(d) {
   var catSel = document.getElementById('unifiedCategory'),
@@ -1006,7 +1040,10 @@ function populateSelects(d) {
   var bankSel = document.getElementById('unifiedBank'),
     curBank = bankSel.value;
   bankSel.innerHTML = '<option value="all">Все банки</option>';
-  (d.accounts || []).forEach(function (v) {
+  
+  // Используем настройки из Firebase или из данных
+  var banks = appSettings.banks.length > 0 ? appSettings.banks : (d.accounts || []);
+  banks.forEach(function (v) {
     var o = document.createElement('option');
     o.value = v;
     o.text = v;
@@ -1028,7 +1065,7 @@ function populateSelects(d) {
   var bankSelTxn = document.getElementById('unifiedBankTxn'),
     curBankTxn = bankSelTxn.value;
   bankSelTxn.innerHTML = '<option value="all">Все банки</option>';
-  (d.accounts || []).forEach(function (v) {
+  banks.forEach(function (v) {
     var o = document.createElement('option');
     o.value = v;
     o.text = v;
@@ -1057,7 +1094,8 @@ function populateSelects(d) {
 
   var mAcc = document.getElementById('mAcc');
   mAcc.innerHTML = '';
-  ['Основной', 'Сберегательный', 'Кредитный'].forEach(function (v) {
+  var accounts = appSettings.accounts.length > 0 ? appSettings.accounts : ['Основной', 'Сберегательный', 'Кредитный'];
+  accounts.forEach(function (v) {
     var o = document.createElement('option');
     o.value = v;
     o.text = v;
@@ -1066,7 +1104,8 @@ function populateSelects(d) {
 
   var mBank = document.getElementById('mBank');
   mBank.innerHTML = '';
-  ['Сбербанк', 'Т-Банк', 'Альфа-Банк', 'ВТБ', 'Другой'].forEach(function (v) {
+  var banksList = appSettings.banks.length > 0 ? appSettings.banks : ['Сбербанк', 'Т-Банк', 'Альфа-Банк', 'ВТБ', 'Другой'];
+  banksList.forEach(function (v) {
     var o = document.createElement('option');
     o.value = v;
     o.text = v;
