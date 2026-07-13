@@ -9,7 +9,18 @@ const firebaseConfig = {
   measurementId: "G-BKD39W5303"
 };
 
-// Инициализируем Firebase
+// Инициализация Firebase
 firebase.initializeApp(firebaseConfig);
+
+// Firestore с кешированием (новый способ, без предупреждения)
+firebase.firestore().enablePersistence({
+  synchronizeTabs: true
+}).catch(function(err) {
+  if (err.code === 'failed-precondition') {
+    console.warn('Офлайн-режим доступен только в одной вкладке');
+  } else if (err.code === 'unimplemented') {
+    console.warn('Браузер не поддерживает офлайн-режим');
+  }
+});
+
 const db = firebase.firestore();
-db.enablePersistence(); // Включаем офлайн-режим
