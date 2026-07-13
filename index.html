@@ -19,12 +19,28 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
-<!-- Google Apps Script (исправленный путь) -->
-<script src="https://www.google.com/jsapi?callback=gsaLoaded"></script>
+<!-- Автоматическое определение режима работы -->
 <script>
-  var gsaLoaded = function() {
-    console.log('Google Apps Script loaded!');
-  };
+  // По умолчанию используем Firebase
+  window.useFirebase = true;
+  
+  // Пытаемся загрузить Google API (если доступен)
+  (function() {
+    var script = document.createElement('script');
+    script.src = 'https://www.google.com/jsapi';
+    script.onload = function() {
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        window.useFirebase = false;
+        console.log('✅ Используется Google Apps Script режим');
+      } else {
+        console.log('🔥 Используется Firebase режим');
+      }
+    };
+    script.onerror = function() {
+      console.log('🔥 Google API не загружен, используем Firebase');
+    };
+    document.head.appendChild(script);
+  })();
 </script>
 
 <!-- Firebase SDK -->
