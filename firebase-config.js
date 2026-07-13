@@ -24,3 +24,4 @@ firebase.firestore().enablePersistence({
 });
 
 const db = firebase.firestore();
+console.log('✅ Firebase инициализирован!');
