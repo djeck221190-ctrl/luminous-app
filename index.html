@@ -15,22 +15,16 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Luminous">
 
-<!-- ============================================ -->
-<!-- 1. СНАЧАЛА Firebase SDK (ОБЯЗАТЕЛЬНО!)       -->
-<!-- ============================================ -->
+<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 
-<!-- ============================================ -->
-<!-- 2. ПОТОМ внешние библиотеки                   -->
-<!-- ============================================ -->
+<!-- Внешние библиотеки -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
-<!-- ============================================ -->
-<!-- 3. Service Worker                            -->
-<!-- ============================================ -->
+<!-- Service Worker -->
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
@@ -39,9 +33,7 @@
   }
 </script>
 
-<!-- ============================================ -->
-<!-- 4. ПОТОМ наши файлы                          -->
-<!-- ============================================ -->
+<!-- Подключение модулей -->
 <script src="firebase-config.js"></script>
 <script src="app.js"></script>
 
@@ -408,6 +400,8 @@ body.compact-mode .filters-bar select,body.compact-mode .filters-bar input{font-
       <button class="nav-item edit-btn" onclick="toggleEditMode()" id="toggleEditBtn" style="padding:4px 12px;font-size:12px;">✏️ Редактировать дашборд</button>
       <button class="nav-item edit-btn" onclick="showModalDesigner()" style="padding:4px 12px;font-size:12px;">🎨 Конструктор окон</button>
       <button class="nav-item edit-btn" onclick="undoLayout()" style="padding:4px 12px;font-size:12px;">↩️ Отменить</button>
+      <!-- Кнопка переключения авторизации -->
+      <button class="nav-item edit-btn" onclick="toggleAuthMode()" id="toggleAuthBtn" style="padding:4px 12px;font-size:12px;background:rgba(108,92,231,0.2);color:var(--primary);">🔒 Авторизация ВКЛ</button>
     </div>
   </div>
   
