@@ -61,7 +61,6 @@ function toggleAuthMode() {
     
     showToast(requireAuth ? '🔒 Режим авторизации включен' : '🔓 Режим авторизации отключен', 'Режим');
     
-    // Если выключили авторизацию и нет пользователя — создаём тестового
     if (!requireAuth && !currentUser) {
         currentUser = {
             id: 'test_user',
@@ -938,15 +937,12 @@ function showLoading() {
 async function loadData() {
   showLoading();
   
-  // 🔥 ПРОВЕРКА РЕЖИМА АВТОРИЗАЦИИ 🔥
   if (requireAuth) {
-    // Если авторизация включена — проверяем пользователя
     if (!currentUser || !currentUser.login) {
       showToast('Необходимо войти', 'Ошибка');
       return;
     }
   } else {
-    // Если авторизация выключена — используем тестового пользователя
     if (!currentUser) {
       currentUser = {
         id: 'test_user',
@@ -960,19 +956,15 @@ async function loadData() {
   }
 
   try {
-    // Загружаем настройки
     await loadAppSettings();
     
-    // Загружаем транзакции
     var snapshot;
     if (requireAuth) {
-      // С фильтром по пользователю
       snapshot = await db.collection('transactions')
         .where('userId', '==', currentUser.login)
         .orderBy('date', 'desc')
         .get();
     } else {
-      // Без фильтра (все транзакции)
       snapshot = await db.collection('transactions')
         .orderBy('date', 'desc')
         .get();
@@ -985,7 +977,6 @@ async function loadData() {
     allTx = tx;
     allData = processData(tx);
     
-    // Загружаем категории
     var catSnapshot;
     if (requireAuth) {
       catSnapshot = await db.collection('categories')
@@ -2904,7 +2895,6 @@ window.onload = function () {
     document.getElementById('compactToggleBtn').textContent = '📐 Расширенный';
   }
   
-  // 🔥 ЗАГРУЖАЕМ РЕЖИМ АВТОРИЗАЦИИ 🔥
   loadAuthMode();
   
   var session = localStorage.getItem('luminous_session');
@@ -2930,7 +2920,6 @@ window.onload = function () {
       document.getElementById('loginInput').focus();
     }
   } else {
-    // 🔥 АВТОМАТИЧЕСКИЙ ВХОД В ТЕСТОВОМ РЕЖИМЕ 🔥
     autoLoginForTest();
     if (!currentUser) {
       document.getElementById('loginInput').focus();
