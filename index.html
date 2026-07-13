@@ -19,8 +19,13 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
-<!-- Google Apps Script (ОБЯЗАТЕЛЬНО!) -->
-<script src="https://www.gstatic.com/gsa/gsa.js"></script>
+<!-- Google Apps Script (исправленный путь) -->
+<script src="https://www.google.com/jsapi?callback=gsaLoaded"></script>
+<script>
+  var gsaLoaded = function() {
+    console.log('Google Apps Script loaded!');
+  };
+</script>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -41,7 +46,6 @@
 <script src="app.js"></script>
 
 <style>
-/* ВСЕ СТИЛИ ОСТАЮТСЯ ЗДЕСЬ (они слишком большие для отдельного файла) */
 :root{--primary:#6c5ce7;--secondary:#00d4aa;--danger:#ff6b6b;--warning:#fbbf24;--bg-body:#0a0a1a;--bg-card:rgba(255,255,255,0.05);--bg-card-hover:rgba(255,255,255,0.08);--bg-input:rgba(30,30,60,0.8);--bg-modal:#1a1a3e;--bg-header:rgba(255,255,255,0.05);--bg-filter:rgba(255,255,255,0.03);--bg-table-header:#1A237E;--text-primary:#e0e0e0;--text-secondary:#8b8ba3;--text-muted:#6b6b8a;--text-inverse:#0a0a1a;--border-color:rgba(255,255,255,0.1);--shadow-color:rgba(0,0,0,0.5);--border-radius:16px;--font-family:'Segoe UI',system-ui,-apple-system,sans-serif;--transition-speed:.3s}
 body.light-mode{--bg-body:#f0f2f5;--bg-card:rgba(255,255,255,0.7);--bg-card-hover:rgba(255,255,255,0.9);--bg-input:rgba(255,255,255,0.9);--bg-modal:#ffffff;--bg-header:rgba(255,255,255,0.7);--bg-filter:rgba(255,255,255,0.5);--bg-table-header:#1A237E;--text-primary:#1a1a2e;--text-secondary:#4a4a6a;--text-muted:#8a8aaa;--text-inverse:#ffffff;--border-color:rgba(0,0,0,0.1);--shadow-color:rgba(0,0,0,0.15)}
 *{margin:0;padding:0;box-sizing:border-box}
