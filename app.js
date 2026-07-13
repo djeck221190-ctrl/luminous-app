@@ -1,4 +1,4 @@
-// app.js - ПОЛНАЯ ВЕРСИЯ С РЕЖИМОМ АВТОРИЗАЦИИ
+// app.js - ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -59,25 +59,35 @@ function toggleAuthMode() {
         btn.style.color = requireAuth ? 'var(--primary)' : 'var(--danger)';
     }
     
-    showToast(requireAuth ? '🔒 Режим авторизации включен' : '🔓 Режим авторизации отключен', 'Режим');
-    
-    if (!requireAuth && !currentUser) {
-        currentUser = {
-            id: 'test_user',
-            login: 'test_user',
-            phone: '',
-            role: 'Администратор',
-            color: '#6c5ce7'
-        };
+    if (!requireAuth) {
+        if (!currentUser) {
+            currentUser = {
+                id: 'test_user',
+                login: 'test_user',
+                phone: '',
+                role: 'Администратор',
+                color: '#6c5ce7'
+            };
+        }
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('appContainer').style.display = 'flex';
         updateUserDisplay();
+        refreshData();
         resetSessionTimer();
-        document.getElementById('adminPanel').style.display = 'flex';
+        if (currentUser.role === 'Администратор') {
+            document.getElementById('adminPanel').style.display = 'flex';
+        }
         showToast('🔓 Режим без авторизации', 'Информация');
+    } else {
+        if (!currentUser || currentUser.id === 'test_user') {
+            logout();
+            document.getElementById('loginScreen').classList.remove('hidden');
+            document.getElementById('appContainer').style.display = 'none';
+            showToast('🔒 Режим авторизации включен. Войдите заново.', 'Информация');
+        } else {
+            refreshData();
+        }
     }
-    
-    refreshData();
 }
 
 function loadAuthMode() {
@@ -110,8 +120,28 @@ function autoLoginForTest() {
         updateUserDisplay();
         refreshData();
         resetSessionTimer();
-        document.getElementById('adminPanel').style.display = 'flex';
+        if (currentUser.role === 'Администратор') {
+            document.getElementById('adminPanel').style.display = 'flex';
+        }
         showToast('🔓 Режим без авторизации', 'Информация');
+    }
+}
+
+// ============================================
+// СИНХРОНИЗАЦИЯ С GOOGLE SHEETS
+// ============================================
+function syncToGoogleSheets() {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+            .withSuccessHandler(function(result) {
+                console.log('✅ Данные синхронизированы с Google Sheets');
+            })
+            .withFailureHandler(function(err) {
+                console.warn('⚠️ Ошибка синхронизации с Google Sheets:', err);
+            })
+            .syncDataToFirestore();
+    } else {
+        console.log('ℹ️ Google Apps Script не доступен, синхронизация пропущена');
     }
 }
 
@@ -425,26 +455,80 @@ async function checkLogin() {
   }
 }
 
+// ============================================
+// ОБНОВЛЕНИЕ ОТОБРАЖЕНИЯ ПОЛЬЗОВАТЕЛЯ
+// ============================================
 function updateUserDisplay() {
-  var fullNameEl = document.getElementById('userFullName'),
-    phoneEl = document.getElementById('userPhone'),
-    badgeEl = document.getElementById('userRoleDisplay');
-  if (currentUser) {
-    fullNameEl.textContent = currentUser.login;
-    phoneEl.textContent = currentUser.phone ? '+7' + currentUser.phone : '+7';
-    
-    if (currentUser.role && currentUser.role !== 'Пользователь') {
-      badgeEl.style.display = 'inline-block';
-      badgeEl.textContent = currentUser.role;
-      badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
-    } else {
-      badgeEl.style.display = 'none';
-    }
-  } else {
+  var fullNameEl = document.getElementById('userFullName');
+  var phoneEl = document.getElementById('userPhone');
+  var badgeEl = document.getElementById('userRoleDisplay');
+  
+  if (!currentUser) {
     fullNameEl.textContent = 'Пользователь';
     phoneEl.textContent = '+7';
     badgeEl.style.display = 'none';
+    return;
   }
+
+  // Проверяем наличие профиля в Firestore
+  db.collection('users').doc(currentUser.login).get()
+    .then(function(doc) {
+      if (doc.exists) {
+        var data = doc.data();
+        var displayName = '';
+        var displayPhone = '+7';
+        
+        // Приоритет: ФИО > телефон > логин
+        if (data.surname && data.name) {
+          displayName = data.surname + ' ' + data.name;
+          if (data.patronymic) displayName += ' ' + data.patronymic;
+        } else if (data.surname) {
+          displayName = data.surname;
+        } else if (data.name) {
+          displayName = data.name;
+        } else {
+          displayName = currentUser.login;
+        }
+        
+        if (data.phone) {
+          displayPhone = '+7' + data.phone;
+        } else if (currentUser.phone) {
+          displayPhone = '+7' + currentUser.phone;
+        }
+        
+        fullNameEl.textContent = displayName;
+        phoneEl.textContent = displayPhone;
+        
+        if (currentUser.role && currentUser.role !== 'Пользователь') {
+          badgeEl.style.display = 'inline-block';
+          badgeEl.textContent = currentUser.role;
+          badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
+        } else {
+          badgeEl.style.display = 'none';
+        }
+      } else {
+        fullNameEl.textContent = currentUser.login;
+        phoneEl.textContent = currentUser.phone ? '+7' + currentUser.phone : '+7';
+        if (currentUser.role && currentUser.role !== 'Пользователь') {
+          badgeEl.style.display = 'inline-block';
+          badgeEl.textContent = currentUser.role;
+          badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
+        } else {
+          badgeEl.style.display = 'none';
+        }
+      }
+    })
+    .catch(function() {
+      fullNameEl.textContent = currentUser.login;
+      phoneEl.textContent = currentUser.phone ? '+7' + currentUser.phone : '+7';
+      if (currentUser.role && currentUser.role !== 'Пользователь') {
+        badgeEl.style.display = 'inline-block';
+        badgeEl.textContent = currentUser.role;
+        badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
+      } else {
+        badgeEl.style.display = 'none';
+      }
+    });
 }
 
 // ============================================
@@ -665,7 +749,7 @@ function initDesignerResize() {
 }
 
 // ============================================
-// РЕДАКТИРОВАНИЕ ДАШБОРДА (LOCALSTORAGE)
+// РЕДАКТИРОВАНИЕ ДАШБОРДА (С ПОЛНЫМ ПЕРЕТАСКИВАНИЕМ)
 // ============================================
 function toggleEditMode() {
   editModeActive = !editModeActive;
@@ -682,6 +766,20 @@ function toggleEditMode() {
 
 function enableEditMode() {
   originalLayout = getCurrentLayout();
+  
+  // Добавляем кнопку "Отменить и выйти"
+  var adminPanel = document.getElementById('adminPanel');
+  var existingCancelBtn = document.getElementById('cancelEditBtn');
+  if (!existingCancelBtn) {
+    var cancelBtn = document.createElement('button');
+    cancelBtn.id = 'cancelEditBtn';
+    cancelBtn.className = 'nav-item edit-btn';
+    cancelBtn.style.cssText = 'padding:4px 12px;font-size:12px;background:rgba(255,107,107,0.2);color:var(--danger);';
+    cancelBtn.textContent = '↩️ Отменить и выйти';
+    cancelBtn.onclick = cancelEditMode;
+    adminPanel.querySelector('.admin-actions').appendChild(cancelBtn);
+  }
+  
   var containers = document.querySelectorAll('.section .widgets-grid,.section .charts-grid,.section .category-grid,.section .yearly-block,.section .compare-block,.section .kpi-grid,.section .builder-section');
   containers.forEach(function (container) {
     container.parentElement.classList.add('edit-mode');
@@ -722,17 +820,37 @@ function enableEditMode() {
         });
       }
     });
+    
     var sortable = new Sortable(container, {
       animation: 150,
       handle: '.drag-handle',
       ghostClass: 'sortable-ghost',
-      onEnd: function () {
+      onEnd: function() {
         saveLayout();
       }
     });
     sortableInstances.push(sortable);
   });
   showToast('Режим редактирования активирован. Перетаскивайте элементы за ручку.', 'Информация');
+}
+
+function cancelEditMode() {
+  for (var id in originalLayout) {
+    var el = document.getElementById(id);
+    if (el) {
+      if (originalLayout[id].width) el.style.width = originalLayout[id].width + 'px';
+      if (originalLayout[id].height) el.style.height = originalLayout[id].height + 'px';
+    }
+  }
+  
+  disableEditMode();
+  editModeActive = false;
+  document.getElementById('toggleEditBtn').textContent = '✏️ Редактировать дашборд';
+  
+  var cancelBtn = document.getElementById('cancelEditBtn');
+  if (cancelBtn) cancelBtn.remove();
+  
+  showToast('✅ Изменения отменены', 'Успешно');
 }
 
 function disableEditMode() {
@@ -958,6 +1076,8 @@ async function loadData() {
   try {
     await loadAppSettings();
     
+    var filters = getActiveFilters();
+    
     var snapshot;
     if (requireAuth) {
       snapshot = await db.collection('transactions')
@@ -974,8 +1094,11 @@ async function loadData() {
     snapshot.forEach(function(doc) {
       tx.push({ id: doc.id, ...doc.data() });
     });
-    allTx = tx;
-    allData = processData(tx);
+    
+    var filteredTx = applyFilters(tx, filters);
+    
+    allTx = filteredTx;
+    allData = processData(filteredTx);
     
     var catSnapshot;
     if (requireAuth) {
@@ -1002,12 +1125,93 @@ async function loadData() {
     updateDashboardYearly(allData);
     populateYearlyFilter(allData);
     loadSavedLayout();
+    
+    updateChartsWithFilters(filters);
+    
   } catch (error) {
     console.error('Load error:', error);
     showToast('Ошибка загрузки данных: ' + error.message, 'Ошибка');
     allTx = [];
     allData = getEmptyData();
   }
+}
+
+function getActiveFilters() {
+  var activeSection = document.querySelector('.section.active');
+  var filters = { period: 'all', category: 'all', bank: 'all', type: 'all', search: '', dateFrom: '', dateTo: '' };
+  
+  if (activeSection) {
+    var id = activeSection.id.replace('sec-', '');
+    if (id === 'dashboard') {
+      filters.period = document.getElementById('unifiedPeriod').value;
+      filters.category = document.getElementById('unifiedCategory').value;
+      filters.bank = document.getElementById('unifiedBank').value;
+      filters.type = document.getElementById('unifiedType').value;
+      filters.search = document.getElementById('unifiedSearch').value;
+      filters.dateFrom = document.getElementById('unifiedDateFrom').value;
+      filters.dateTo = document.getElementById('unifiedDateTo').value;
+    } else if (id === 'transactions') {
+      filters.period = document.getElementById('unifiedPeriodTxn').value;
+      filters.category = document.getElementById('unifiedCategoryTxn').value;
+      filters.bank = document.getElementById('unifiedBankTxn').value;
+      filters.type = document.getElementById('unifiedTypeTxn').value;
+      filters.search = document.getElementById('unifiedSearchTxn').value;
+      filters.dateFrom = document.getElementById('unifiedDateFromTxn').value;
+      filters.dateTo = document.getElementById('unifiedDateToTxn').value;
+    }
+  }
+  return filters;
+}
+
+function applyFilters(transactions, filters) {
+  var now = new Date();
+  var currentYear = now.getFullYear();
+  var currentMonth = now.getMonth();
+  
+  return transactions.filter(function(t) {
+    var dateParts = t.date.split('.');
+    if (dateParts.length !== 3) return true;
+    var tDate = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]));
+    if (isNaN(tDate.getTime())) return true;
+    
+    if (filters.period && filters.period !== 'all' && filters.period !== 'custom') {
+      if (filters.period === 'currentYear') {
+        if (tDate.getFullYear() !== currentYear) return false;
+      } else if (filters.period === 'currentMonth') {
+        if (tDate.getFullYear() !== currentYear || tDate.getMonth() !== currentMonth) return false;
+      } else if (filters.period === 'lastMonth') {
+        var lastMonth = new Date(currentYear, currentMonth - 1, 1);
+        if (tDate.getFullYear() !== lastMonth.getFullYear() || tDate.getMonth() !== lastMonth.getMonth()) return false;
+      } else if (filters.period === '6months') {
+        var sixMonthsAgo = new Date(currentYear, currentMonth - 6, 1);
+        if (tDate < sixMonthsAgo) return false;
+      } else if (filters.period === '12months') {
+        var twelveMonthsAgo = new Date(currentYear, currentMonth - 12, 1);
+        if (tDate < twelveMonthsAgo) return false;
+      }
+    } else if (filters.period === 'custom') {
+      if (filters.dateFrom && filters.dateTo) {
+        var from = new Date(filters.dateFrom);
+        var to = new Date(filters.dateTo);
+        if (tDate < from || tDate > to) return false;
+      }
+    }
+    
+    if (filters.category && filters.category !== 'all' && t.category !== filters.category) return false;
+    if (filters.bank && filters.bank !== 'all' && t.bank !== filters.bank) return false;
+    if (filters.type && filters.type !== 'all' && t.type !== filters.type) return false;
+    
+    if (filters.search) {
+      var searchLower = filters.search.toLowerCase();
+      var fields = [t.description, t.category, t.bank, t.account, String(t.amount)];
+      var found = fields.some(function(f) {
+        return String(f).toLowerCase().includes(searchLower);
+      });
+      if (!found) return false;
+    }
+    
+    return true;
+  });
 }
 
 function getEmptyData() {
@@ -1115,6 +1319,125 @@ function processData(transactions) {
     categories: Object.keys(categories).sort(),
     accounts: Object.keys(accounts).sort()
   };
+}
+
+// ============================================
+// ГРАФИКИ С УЧЁТОМ ФИЛЬТРОВ
+// ============================================
+function updateChartsWithFilters(filters) {
+  if (!allData) return;
+  
+  var filteredTx = applyFilters(allTx, filters || getActiveFilters());
+  var filteredData = processData(filteredTx);
+  
+  updateCharts(filteredData);
+}
+
+function updateCharts(d) {
+  if (typeof Chart === 'undefined') return;
+  var ctx1 = document.getElementById('cCat');
+  if (ctx1) {
+    ctx1 = ctx1.getContext('2d');
+    if (chartCat) chartCat.destroy();
+    var cLabels = d.categoryLabels || ['Нет данных'],
+      cData = d.categoryData || [1];
+    var colors = ['#6c5ce7', '#00d4aa', '#ff6b6b', '#ffa94d', '#a29bfe', '#00b4d8', '#f472b8', '#34d399'];
+    chartCat = new Chart(ctx1, {
+      type: 'doughnut',
+      data: { labels: cLabels, datasets: [{ data: cData, backgroundColor: colors.slice(0, cLabels.length), borderWidth: 2, borderColor: '#1a1a2e' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8b8ba3', boxWidth: 12, font: { size: 8 } } } } }
+    });
+  }
+  var ctx2 = document.getElementById('cBank');
+  if (ctx2) {
+    ctx2 = ctx2.getContext('2d');
+    if (chartBank) chartBank.destroy();
+    var bankLabels = d.bankLabels || ['Нет данных'],
+      bankExpenseData = d.bankExpenseData || [1];
+    var bankColors = ['#f472b6', '#34d399', '#60a5fa', '#fbbf24', '#a78bfa', '#fb923c', '#2dd4bf', '#f87171'];
+    chartBank = new Chart(ctx2, {
+      type: 'doughnut',
+      data: { labels: bankLabels, datasets: [{ data: bankExpenseData, backgroundColor: bankColors.slice(0, bankLabels.length), borderWidth: 2, borderColor: '#1a1a2e' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8b8ba3', boxWidth: 12, font: { size: 8 } } } } }
+    });
+  }
+  var ctx3 = document.getElementById('cTrend');
+  if (ctx3) {
+    ctx3 = ctx3.getContext('2d');
+    if (chartTrend) chartTrend.destroy();
+    var labels = d.monthLabels || [],
+      incomeData = d.monthIncome || [],
+      expenseData = d.monthExpense || [];
+    chartTrend = new Chart(ctx3, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Доходы', data: incomeData, borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.1)', fill: true, tension: 0.4, pointBackgroundColor: '#00d4aa', pointBorderColor: '#00d4aa' },
+          { label: 'Расходы', data: expenseData, borderColor: '#ff6b6b', backgroundColor: 'rgba(255,107,107,0.1)', fill: true, tension: 0.4, pointBackgroundColor: '#ff6b6b', pointBorderColor: '#ff6b6b' }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b8ba3', font: { size: 10 } } } }, scales: { y: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { ticks: { color: '#8b8ba3', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+    });
+  }
+  var ctx4 = document.getElementById('cMonthly');
+  if (ctx4) {
+    ctx4 = ctx4.getContext('2d');
+    if (chartMonthly) chartMonthly.destroy();
+    var monthLabels = d.monthLabels || [],
+      monthIncome = d.monthIncome || [],
+      monthExpense = d.monthExpense || [];
+    chartMonthly = new Chart(ctx4, {
+      type: 'bar',
+      data: {
+        labels: monthLabels,
+        datasets: [
+          { label: 'Доходы', data: monthIncome, backgroundColor: 'rgba(0,212,170,0.6)', borderColor: '#00d4aa', borderWidth: 1 },
+          { label: 'Расходы', data: monthExpense, backgroundColor: 'rgba(255,107,107,0.6)', borderColor: '#ff6b6b', borderWidth: 1 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b8ba3', font: { size: 10 } } } }, scales: { y: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }, x: { ticks: { color: '#8b8ba3', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+    });
+  }
+  var ctx5 = document.getElementById('cHeatmap');
+  if (ctx5) {
+    ctx5 = ctx5.getContext('2d');
+    if (chartHeatmap) chartHeatmap.destroy();
+    var dayNames = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'],
+      dayData = [0, 0, 0, 0, 0, 0, 0];
+    (d.transactions || []).forEach(function (t) {
+      if (t.type === 'Расход' && t.date) {
+        var parts = t.date.split('.');
+        if (parts.length === 3) {
+          var dt = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+          var day = dt.getDay();
+          dayData[day === 0 ? 6 : day - 1] += Math.abs(t.amount);
+        }
+      }
+    });
+    var maxDay = Math.max.apply(null, dayData.concat([1]));
+    chartHeatmap = new Chart(ctx5, {
+      type: 'bar',
+      data: {
+        labels: dayNames,
+        datasets: [{
+          label: 'Расходы по дням недели',
+          data: dayData,
+          backgroundColor: dayData.map(function (val) {
+            var ratio = val / maxDay;
+            if (ratio < 0.2) return 'rgba(52,152,219,0.3)';
+            if (ratio < 0.4) return 'rgba(52,152,219,0.5)';
+            if (ratio < 0.6) return 'rgba(241,196,15,0.6)';
+            if (ratio < 0.8) return 'rgba(243,156,18,0.7)';
+            return 'rgba(231,76,60,0.8)';
+          }),
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }, x: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+    });
+  }
 }
 
 // ============================================
@@ -1670,115 +1993,8 @@ async function deleteCategory(name) {
 }
 
 // ============================================
-// ЧАРТЫ
+// UPDATE EXTRA CHARTS
 // ============================================
-function updateCharts(d) {
-  if (typeof Chart === 'undefined') return;
-  var ctx1 = document.getElementById('cCat');
-  if (ctx1) {
-    ctx1 = ctx1.getContext('2d');
-    if (chartCat) chartCat.destroy();
-    var cLabels = d.categoryLabels || ['Нет данных'],
-      cData = d.categoryData || [1];
-    var colors = ['#6c5ce7', '#00d4aa', '#ff6b6b', '#ffa94d', '#a29bfe', '#00b4d8', '#f472b8', '#34d399'];
-    chartCat = new Chart(ctx1, {
-      type: 'doughnut',
-      data: { labels: cLabels, datasets: [{ data: cData, backgroundColor: colors.slice(0, cLabels.length), borderWidth: 2, borderColor: '#1a1a2e' }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8b8ba3', boxWidth: 12, font: { size: 8 } } } } }
-    });
-  }
-  var ctx2 = document.getElementById('cBank');
-  if (ctx2) {
-    ctx2 = ctx2.getContext('2d');
-    if (chartBank) chartBank.destroy();
-    var bankLabels = d.bankLabels || ['Нет данных'],
-      bankExpenseData = d.bankExpenseData || [1];
-    var bankColors = ['#f472b6', '#34d399', '#60a5fa', '#fbbf24', '#a78bfa', '#fb923c', '#2dd4bf', '#f87171'];
-    chartBank = new Chart(ctx2, {
-      type: 'doughnut',
-      data: { labels: bankLabels, datasets: [{ data: bankExpenseData, backgroundColor: bankColors.slice(0, bankLabels.length), borderWidth: 2, borderColor: '#1a1a2e' }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#8b8ba3', boxWidth: 12, font: { size: 8 } } } } }
-    });
-  }
-  var ctx3 = document.getElementById('cTrend');
-  if (ctx3) {
-    ctx3 = ctx3.getContext('2d');
-    if (chartTrend) chartTrend.destroy();
-    var labels = d.monthLabels || [],
-      incomeData = d.monthIncome || [],
-      expenseData = d.monthExpense || [];
-    chartTrend = new Chart(ctx3, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          { label: 'Доходы', data: incomeData, borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.1)', fill: true, tension: 0.4, pointBackgroundColor: '#00d4aa', pointBorderColor: '#00d4aa' },
-          { label: 'Расходы', data: expenseData, borderColor: '#ff6b6b', backgroundColor: 'rgba(255,107,107,0.1)', fill: true, tension: 0.4, pointBackgroundColor: '#ff6b6b', pointBorderColor: '#ff6b6b' }
-        ]
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b8ba3', font: { size: 10 } } } }, scales: { y: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { ticks: { color: '#8b8ba3', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
-    });
-  }
-  var ctx4 = document.getElementById('cMonthly');
-  if (ctx4) {
-    ctx4 = ctx4.getContext('2d');
-    if (chartMonthly) chartMonthly.destroy();
-    var monthLabels = d.monthLabels || [],
-      monthIncome = d.monthIncome || [],
-      monthExpense = d.monthExpense || [];
-    chartMonthly = new Chart(ctx4, {
-      type: 'bar',
-      data: {
-        labels: monthLabels,
-        datasets: [
-          { label: 'Доходы', data: monthIncome, backgroundColor: 'rgba(0,212,170,0.6)', borderColor: '#00d4aa', borderWidth: 1 },
-          { label: 'Расходы', data: monthExpense, backgroundColor: 'rgba(255,107,107,0.6)', borderColor: '#ff6b6b', borderWidth: 1 }
-        ]
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#8b8ba3', font: { size: 10 } } } }, scales: { y: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }, x: { ticks: { color: '#8b8ba3', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
-    });
-  }
-  var ctx5 = document.getElementById('cHeatmap');
-  if (ctx5) {
-    ctx5 = ctx5.getContext('2d');
-    if (chartHeatmap) chartHeatmap.destroy();
-    var dayNames = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'],
-      dayData = [0, 0, 0, 0, 0, 0, 0];
-    (d.transactions || []).forEach(function (t) {
-      if (t.type === 'Расход' && t.date) {
-        var parts = t.date.split('.');
-        if (parts.length === 3) {
-          var dt = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-          var day = dt.getDay();
-          dayData[day === 0 ? 6 : day - 1] += Math.abs(t.amount);
-        }
-      }
-    });
-    var maxDay = Math.max.apply(null, dayData.concat([1]));
-    chartHeatmap = new Chart(ctx5, {
-      type: 'bar',
-      data: {
-        labels: dayNames,
-        datasets: [{
-          label: 'Расходы по дням недели',
-          data: dayData,
-          backgroundColor: dayData.map(function (val) {
-            var ratio = val / maxDay;
-            if (ratio < 0.2) return 'rgba(52,152,219,0.3)';
-            if (ratio < 0.4) return 'rgba(52,152,219,0.5)';
-            if (ratio < 0.6) return 'rgba(241,196,15,0.6)';
-            if (ratio < 0.8) return 'rgba(243,156,18,0.7)';
-            return 'rgba(231,76,60,0.8)';
-          }),
-          borderColor: 'rgba(255,255,255,0.1)',
-          borderWidth: 1
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }, x: { ticks: { color: '#8b8ba3' }, grid: { color: 'rgba(255,255,255,0.05)' } } } }
-    });
-  }
-}
-
 function updateExtraCharts(d) {
   if (typeof Chart === 'undefined') return;
   var ctx1 = document.getElementById('cWeeklyTrend');
@@ -1844,6 +2060,9 @@ function updateExtraCharts(d) {
   }
 }
 
+// ============================================
+// UPDATE DASHBOARD YEARLY
+// ============================================
 function updateDashboardYearly(d) {
   var container = document.getElementById('dashboardYearlyAnalytics');
   if (!container) return;
@@ -2271,7 +2490,7 @@ function showKpiDetail(type) {
 }
 
 // ============================================
-// ТРАНЗАКЦИИ (CRUD - FIREBASE)
+// ТРАНЗАКЦИИ (CRUD - FIREBASE + СИНХРОНИЗАЦИЯ)
 // ============================================
 function showAddModal() {
   document.getElementById('addModal').classList.add('active');
@@ -2332,6 +2551,8 @@ async function deleteTransaction(id) {
   try {
     await db.collection('transactions').doc(id).delete();
     showToast('Транзакция удалена', 'Успешно');
+    // Синхронизация с Google Sheets
+    syncToGoogleSheets();
     refreshData();
   } catch (error) {
     showToast('Ошибка: ' + error.message, 'Ошибка');
@@ -2396,6 +2617,9 @@ async function submitTx() {
       successEl.textContent = '✅ Транзакция добавлена!';
     }
     successEl.style.display = 'block';
+    
+    // Синхронизация с Google Sheets
+    syncToGoogleSheets();
     
     setTimeout(function() {
       closeModal();
@@ -2621,7 +2845,7 @@ async function saveProfile() {
 }
 
 // ============================================
-// КОНСТРУКТОР ГРАФИКОВ
+// КОНСТРУКТОР ГРАФИКОВ (БЕЗ НЕРАБОТАЮЩИХ НАСТРОЕК)
 // ============================================
 function buildChart() {
   if (!allData) {
@@ -2633,10 +2857,6 @@ function buildChart() {
   var y = document.getElementById('builderDataY').value;
   var period = document.getElementById('builderPeriod').value;
   var colorScheme = document.getElementById('builderColorScheme').value;
-  var showLabels = document.getElementById('builderShowLabels').checked;
-  var smooth = document.getElementById('builderSmooth').checked;
-  var stacked = document.getElementById('builderStacked').checked;
-  var animate = document.getElementById('builderAnimate').checked;
   var ctx = document.getElementById('builderChart').getContext('2d');
   if (builderChart) builderChart.destroy();
   var labels = [],
@@ -2693,10 +2913,8 @@ function buildChart() {
     datasets.push({ label: 'Баланс', data: getYData('balance'), backgroundColor: colors[2], borderColor: darken(colors[2]), borderWidth: 2 });
   }
   var chartType = type;
-  if (type === 'barStacked') { chartType = 'bar';
-    stacked = true; }
-  if (type === 'lineStacked') { chartType = 'line';
-    stacked = true; }
+  if (type === 'barStacked') { chartType = 'bar'; }
+  if (type === 'lineStacked') { chartType = 'line'; }
   if (['pie', 'doughnut', 'polarArea'].includes(chartType)) {
     if (datasets.length > 1) {
       var combined = datasets[0].data.map(function (v, i) {
@@ -2735,24 +2953,22 @@ function buildChart() {
       }
     },
     scales: {},
-    animation: animate ? { duration: 1000 } : false
+    animation: { duration: 1000 }
   };
   if (['bar', 'line', 'barStacked', 'lineStacked'].includes(chartType)) {
     options.scales = {
       y: {
         ticks: { color: getComputedStyle(document.body).getPropertyValue('--text-secondary').trim() || '#8b8ba3' },
         grid: { color: getComputedStyle(document.body).getPropertyValue('--border-color').trim() || 'rgba(255,255,255,0.05)' },
-        beginAtZero: true,
-        stacked: stacked
+        beginAtZero: true
       },
       x: {
         ticks: { color: getComputedStyle(document.body).getPropertyValue('--text-secondary').trim() || '#8b8ba3', maxRotation: 45 },
-        grid: { color: getComputedStyle(document.body).getPropertyValue('--border-color').trim() || 'rgba(255,255,255,0.05)' },
-        stacked: stacked
+        grid: { color: getComputedStyle(document.body).getPropertyValue('--border-color').trim() || 'rgba(255,255,255,0.05)' }
       }
     };
     if (chartType === 'line' || chartType === 'lineStacked') {
-      options.elements = { line: { tension: smooth ? 0.4 : 0 } };
+      options.elements = { line: { tension: 0.4 } };
     }
   }
   if (chartType === 'scatter' || chartType === 'bubble') {
@@ -2766,14 +2982,6 @@ function buildChart() {
         ticks: { color: getComputedStyle(document.body).getPropertyValue('--text-secondary').trim() || '#8b8ba3', maxRotation: 45 },
         grid: { color: getComputedStyle(document.body).getPropertyValue('--border-color').trim() || 'rgba(255,255,255,0.05)' }
       }
-    };
-  }
-  if (showLabels && chartType !== 'scatter' && chartType !== 'bubble') {
-    options.plugins.datalabels = {
-      color: getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#e0e0e0',
-      font: { size: 9 },
-      anchor: 'end',
-      align: 'end'
     };
   }
   builderChart = new Chart(ctx, {
