@@ -400,8 +400,6 @@ body.compact-mode .filters-bar select,body.compact-mode .filters-bar input{font-
       <button class="nav-item edit-btn" onclick="toggleEditMode()" id="toggleEditBtn" style="padding:4px 12px;font-size:12px;">✏️ Редактировать дашборд</button>
       <button class="nav-item edit-btn" onclick="showModalDesigner()" style="padding:4px 12px;font-size:12px;">🎨 Конструктор окон</button>
       <button class="nav-item edit-btn" onclick="undoLayout()" style="padding:4px 12px;font-size:12px;">↩️ Отменить</button>
-      <!-- Кнопка переключения авторизации -->
-      <button class="nav-item edit-btn" onclick="toggleAuthMode()" id="toggleAuthBtn" style="padding:4px 12px;font-size:12px;background:rgba(108,92,231,0.2);color:var(--primary);">🔒 Авторизация ВКЛ</button>
     </div>
   </div>
   
@@ -413,6 +411,8 @@ body.compact-mode .filters-bar select,body.compact-mode .filters-bar input{font-
     <button class="nav-item" onclick="switchTab('builder')">🔧 Конструктор</button>
     <button class="nav-item" onclick="switchTab('analytics')">📈 Аналитика</button>
     <button class="nav-item" onclick="refreshData()">🔄 Обновить</button>
+    <!-- 🔥 КНОПКА ПЕРЕКЛЮЧЕНИЯ АВТОРИЗАЦИИ 🔥 -->
+    <button class="nav-item" onclick="toggleAuthMode()" id="toggleAuthBtn" style="background:rgba(108,92,231,0.2);color:var(--primary);">🔒 Авторизация ВКЛ</button>
   </div>
   
   <!-- Секции -->
