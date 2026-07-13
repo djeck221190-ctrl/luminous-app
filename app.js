@@ -1,4 +1,4 @@
-// app.js - ПОЛНАЯ ВЕРСИЯ ДЛЯ GOOGLE APPS SCRIPT
+// app.js - ПОЛНАЯ ВЕРСИЯ ДЛЯ GOOGLE APPS SCRIPT (БЕЗ FIREBASE)
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -68,10 +68,6 @@ function resetSessionTimer() {
 document.addEventListener('click', resetSessionTimer);
 document.addEventListener('keydown', resetSessionTimer);
 document.addEventListener('scroll', resetSessionTimer);
-
-function generateId() {
-  return 'TXN' + new Date().getTime() + Math.random().toString(36).substr(2, 6);
-}
 
 // ============================================
 // ТЕМА И РЕЖИМЫ
@@ -174,7 +170,7 @@ function toggleCompactMode() {
 }
 
 // ============================================
-// АВТОРИЗАЦИЯ
+// АВТОРИЗАЦИЯ (GOOGLE APPS SCRIPT)
 // ============================================
 function showRegister() {
   document.getElementById('loginForm').style.display = 'none';
@@ -384,7 +380,7 @@ function updateUserDisplay() {
 }
 
 // ============================================
-// ВОССТАНОВЛЕНИЕ ПАРОЛЯ
+// ВОССТАНОВЛЕНИЕ ПАРОЛЯ (GOOGLE APPS SCRIPT)
 // ============================================
 function showForgotPassword() {
   document.getElementById('forgotModal').classList.add('active');
@@ -514,7 +510,7 @@ function toggleEmojiPicker(inputId) {
 }
 
 // ============================================
-// ДИЗАЙНЕР ОКОН
+// ДИЗАЙНЕР ОКОН (GOOGLE APPS SCRIPT)
 // ============================================
 function showModalDesigner() {
   document.getElementById('modalDesigner').classList.add('active');
@@ -880,7 +876,7 @@ function resetUnifiedFiltersCat() {
 }
 
 // ============================================
-// ЗАГРУЗКА ДАННЫХ
+// ЗАГРУЗКА ДАННЫХ (GOOGLE APPS SCRIPT)
 // ============================================
 function refreshData() {
   loadData();
@@ -2232,54 +2228,78 @@ function deleteTransaction(id) {
 
 function submitTx() {
   var id = document.getElementById('editId').value;
-  var date = document.getElementById('mDate').value,
-    desc = document.getElementById('mDesc').value.trim();
-  var amt = document.getElementById('mAmt').value,
-    type = document.getElementById('mType').value;
-  var cat = document.getElementById('mCat').value,
-    acc = document.getElementById('mAcc').value,
-    bank = document.getElementById('mBank').value;
+  var date = document.getElementById('mDate').value;
+  var desc = document.getElementById('mDesc').value.trim();
+  var amt = document.getElementById('mAmt').value;
+  var type = document.getElementById('mType').value;
+  var cat = document.getElementById('mCat').value;
+  var acc = document.getElementById('mAcc').value;
+  var bank = document.getElementById('mBank').value;
+  var errorEl = document.getElementById('mError');
+  var successEl = document.getElementById('mSuccess');
+  
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
   
   if (!date || !desc || !amt) {
-    document.getElementById('mError').style.display = 'block';
-    document.getElementById('mError').textContent = 'Заполните все поля';
+    errorEl.textContent = 'Заполните все поля';
+    errorEl.style.display = 'block';
     return;
   }
   
-  document.getElementById('mError').style.display = 'none';
-  var final = parseFloat(amt);
-  if (isNaN(final) || final === 0) {
-    document.getElementById('mError').style.display = 'block';
-    document.getElementById('mError').textContent = 'Введите корректную сумму (не 0)';
+  var finalAmt = parseFloat(amt);
+  if (isNaN(finalAmt) || finalAmt === 0) {
+    errorEl.textContent = 'Введите корректную сумму (не 0)';
+    errorEl.style.display = 'block';
     return;
   }
-  document.getElementById('mSuccess').style.display = 'none';
-  
-  var txData = { date: date, description: desc, amount: final, type: type, category: cat, account: acc, bank: bank };
-  
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result && result.success) {
-        document.getElementById('mSuccess').style.display = 'block';
-        document.getElementById('mSuccess').textContent = id ? '✅ Транзакция обновлена!' : '✅ Транзакция добавлена!';
-        setTimeout(function() {
-          closeModal();
-          refreshData();
-        }, 800);
-      } else {
-        document.getElementById('mError').style.display = 'block';
-        document.getElementById('mError').textContent = result.error || 'Ошибка сохранения';
-      }
-    })
-    .withFailureHandler(function(err) {
-      document.getElementById('mError').style.display = 'block';
-      document.getElementById('mError').textContent = 'Ошибка: ' + err;
-    });
-  
+
+  // Преобразуем дату в формат DD.MM.YYYY
+  var dateObj = new Date(date);
+  var formattedDate = dateObj.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
   if (id) {
-    google.script.run.updateTransaction(id, date, desc, final, type, cat, acc, bank);
+    // Обновление
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.success) {
+          successEl.textContent = '✅ Транзакция обновлена!';
+          successEl.style.display = 'block';
+          setTimeout(function() {
+            closeModal();
+            refreshData();
+          }, 800);
+        } else {
+          errorEl.textContent = result.error || 'Ошибка обновления';
+          errorEl.style.display = 'block';
+        }
+      })
+      .withFailureHandler(function(err) {
+        errorEl.textContent = 'Ошибка: ' + err;
+        errorEl.style.display = 'block';
+      })
+      .updateTransaction(id, formattedDate, desc, finalAmt, type, cat, acc, bank);
   } else {
-    google.script.run.saveTransaction(date, desc, final, type, cat, acc, bank);
+    // Добавление
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result.success) {
+          successEl.textContent = '✅ Транзакция добавлена!';
+          successEl.style.display = 'block';
+          setTimeout(function() {
+            closeModal();
+            refreshData();
+          }, 800);
+        } else {
+          errorEl.textContent = result.error || 'Ошибка сохранения';
+          errorEl.style.display = 'block';
+        }
+      })
+      .withFailureHandler(function(err) {
+        errorEl.textContent = 'Ошибка: ' + err;
+        errorEl.style.display = 'block';
+      })
+      .saveTransaction(formattedDate, desc, finalAmt, type, cat, acc, bank);
   }
 }
 
@@ -2305,8 +2325,8 @@ function addCategory() {
   var emoji = document.getElementById('newCatEmoji').value.trim() || '📌';
   var type = document.getElementById('newCatType').value;
   var sub = document.getElementById('newCatSub').value.trim() || 'Разное';
-  var errorEl = document.getElementById('catError'),
-    successEl = document.getElementById('catSuccess');
+  var errorEl = document.getElementById('catError');
+  var successEl = document.getElementById('catSuccess');
   errorEl.style.display = 'none';
   successEl.style.display = 'none';
   
@@ -2433,8 +2453,8 @@ function saveProfile() {
   var day = document.getElementById('pfDay').value,
     month = document.getElementById('pfMonth').value,
     year = document.getElementById('pfYear').value;
-  var errorEl = document.getElementById('pfError'),
-    successEl = document.getElementById('pfSuccess');
+  var errorEl = document.getElementById('pfError');
+  var successEl = document.getElementById('pfSuccess');
   errorEl.style.display = 'none';
   successEl.style.display = 'none';
   
