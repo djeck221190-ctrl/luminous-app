@@ -1,4 +1,4 @@
-// app.js - ПОЛНАЯ ВЕРСИЯ ДЛЯ FIREBASE
+// app.js - ПОЛНАЯ ВЕРСИЯ С РЕЖИМОМ АВТОРИЗАЦИИ
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -42,6 +42,79 @@ var appSettings = {
     currencies: ['RUB'],
     colors: []
 };
+
+// ============================================
+// РЕЖИМ АВТОРИЗАЦИИ (ДЛЯ АДМИНИСТРАТОРОВ)
+// ============================================
+var requireAuth = true;
+
+function toggleAuthMode() {
+    requireAuth = !requireAuth;
+    localStorage.setItem('luminous_require_auth', requireAuth ? 'true' : 'false');
+    
+    var btn = document.getElementById('toggleAuthBtn');
+    if (btn) {
+        btn.textContent = requireAuth ? '🔒 Авторизация ВКЛ' : '🔓 Авторизация ВЫКЛ';
+        btn.style.background = requireAuth ? 'rgba(108,92,231,0.2)' : 'rgba(255,107,107,0.2)';
+        btn.style.color = requireAuth ? 'var(--primary)' : 'var(--danger)';
+    }
+    
+    showToast(requireAuth ? '🔒 Режим авторизации включен' : '🔓 Режим авторизации отключен', 'Режим');
+    
+    // Если выключили авторизацию и нет пользователя — создаём тестового
+    if (!requireAuth && !currentUser) {
+        currentUser = {
+            id: 'test_user',
+            login: 'test_user',
+            phone: '',
+            role: 'Администратор',
+            color: '#6c5ce7'
+        };
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('appContainer').style.display = 'flex';
+        updateUserDisplay();
+        resetSessionTimer();
+        document.getElementById('adminPanel').style.display = 'flex';
+        showToast('🔓 Режим без авторизации', 'Информация');
+    }
+    
+    refreshData();
+}
+
+function loadAuthMode() {
+    var saved = localStorage.getItem('luminous_require_auth');
+    if (saved !== null) {
+        requireAuth = saved === 'true';
+    } else {
+        requireAuth = true;
+    }
+    
+    var btn = document.getElementById('toggleAuthBtn');
+    if (btn) {
+        btn.textContent = requireAuth ? '🔒 Авторизация ВКЛ' : '🔓 Авторизация ВЫКЛ';
+        btn.style.background = requireAuth ? 'rgba(108,92,231,0.2)' : 'rgba(255,107,107,0.2)';
+        btn.style.color = requireAuth ? 'var(--primary)' : 'var(--danger)';
+    }
+}
+
+function autoLoginForTest() {
+    if (!requireAuth && !currentUser) {
+        currentUser = {
+            id: 'test_user',
+            login: 'test_user',
+            phone: '',
+            role: 'Администратор',
+            color: '#6c5ce7'
+        };
+        document.getElementById('loginScreen').classList.add('hidden');
+        document.getElementById('appContainer').style.display = 'flex';
+        updateUserDisplay();
+        refreshData();
+        resetSessionTimer();
+        document.getElementById('adminPanel').style.display = 'flex';
+        showToast('🔓 Режим без авторизации', 'Информация');
+    }
+}
 
 var emojis = ['😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊','😋','😎','😍','🥰','😘','😗','😙','😚','☺️','🙂','🤗','🤩','🤔','🤨','😐','😑','😶','🙄','😏','😣','😥','😮','🤐','😯','😪','😫','😴','😌','😛','😜','😝','🤤','😒','😓','😔','😕','🙃','🤑','😲','☹️','🙁','😖','😞','😟','😤','😢','😭','😦','😧','😨','😩','🤯','😬','😰','😱','🥵','🥶','😳','🤪','😵','😡','😠','🤬','🍎','🍕','🍔','🍟','🌭','🍿','🧇','🥞','🧁','🍩','🍪','☕','🥤','🧃','🍷','🍺','🍻','🥂','🍾','🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛹','✈️','🛩️','🛫','🛬','🚁','🚟','🚠','🚡','🚀','🛸','🎮','🎲','🎯','🎳','🎪','🎨','🎭','🎤','🎧','🎼','🎹','🥁','🎸','🎺','🎻','🏀','🏈','⚽','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🏒','🏑','🥍','🏏','👕','👖','👗','👘','👙','👚','👛','👜','👝','🎒','👞','👟','🥾','🥿','👠','👡','👢','💎','📿','💄','💍','💅','💪','🦷','🦴','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚭','🔞','📵','🚱','🔱','⚠️','🚸','⛽','🛢️','♿','🛗','🔄','🔃','🔄','🔙','🔚','🔛','🔜','🔝','🛐','🕋','🕌','🛕','🛤️','🛣️','🗾','🗺️','🌍','🌎','🌏','🌐','🗿','🪦','🪔','🪬','🪭','🪩','🪟','🪑','🪞','🪝','🪢','🧶','🧵','🪡','🪣','🧹','🧺','🧻','🧼','🧽','🪥','🧴','🪒','🧷','🧸','🪀','🪁','🧿','🪆','🧩','🪅','🧯','🪄','🪩','🧬','🧫','🧪','🔬','🔭','📡','💉','🩸','🩹','🩺','🪨','🧱'];
 
@@ -851,7 +924,7 @@ function resetUnifiedFiltersCat() {
 }
 
 // ============================================
-// ЗАГРУЗКА ДАННЫХ (FIREBASE)
+// ЗАГРУЗКА ДАННЫХ (FIREBASE С РЕЖИМОМ АВТОРИЗАЦИИ)
 // ============================================
 function refreshData() {
   loadData();
@@ -865,9 +938,25 @@ function showLoading() {
 async function loadData() {
   showLoading();
   
-  if (!currentUser || !currentUser.login) {
-    showToast('Необходимо войти', 'Ошибка');
-    return;
+  // 🔥 ПРОВЕРКА РЕЖИМА АВТОРИЗАЦИИ 🔥
+  if (requireAuth) {
+    // Если авторизация включена — проверяем пользователя
+    if (!currentUser || !currentUser.login) {
+      showToast('Необходимо войти', 'Ошибка');
+      return;
+    }
+  } else {
+    // Если авторизация выключена — используем тестового пользователя
+    if (!currentUser) {
+      currentUser = {
+        id: 'test_user',
+        login: 'test_user',
+        phone: '',
+        role: 'Администратор',
+        color: '#6c5ce7'
+      };
+      console.log('🔓 Режим без авторизации, используется тестовый пользователь');
+    }
   }
 
   try {
@@ -875,10 +964,19 @@ async function loadData() {
     await loadAppSettings();
     
     // Загружаем транзакции
-    var snapshot = await db.collection('transactions')
-      .where('userId', '==', currentUser.login)
-      .orderBy('date', 'desc')
-      .get();
+    var snapshot;
+    if (requireAuth) {
+      // С фильтром по пользователю
+      snapshot = await db.collection('transactions')
+        .where('userId', '==', currentUser.login)
+        .orderBy('date', 'desc')
+        .get();
+    } else {
+      // Без фильтра (все транзакции)
+      snapshot = await db.collection('transactions')
+        .orderBy('date', 'desc')
+        .get();
+    }
     
     var tx = [];
     snapshot.forEach(function(doc) {
@@ -888,9 +986,15 @@ async function loadData() {
     allData = processData(tx);
     
     // Загружаем категории
-    var catSnapshot = await db.collection('categories')
-      .where('userId', '==', currentUser.login)
-      .get();
+    var catSnapshot;
+    if (requireAuth) {
+      catSnapshot = await db.collection('categories')
+        .where('userId', '==', currentUser.login)
+        .get();
+    } else {
+      catSnapshot = await db.collection('categories')
+        .get();
+    }
     
     var categories = [];
     catSnapshot.forEach(function(doc) {
@@ -1023,7 +1127,7 @@ function processData(transactions) {
 }
 
 // ============================================
-// POPULATE SELECTS (С ИСПОЛЬЗОВАНИЕМ НАСТРОЕК)
+// POPULATE SELECTS
 // ============================================
 function populateSelects(d) {
   var catSel = document.getElementById('unifiedCategory'),
@@ -1041,7 +1145,6 @@ function populateSelects(d) {
     curBank = bankSel.value;
   bankSel.innerHTML = '<option value="all">Все банки</option>';
   
-  // Используем настройки из Firebase или из данных
   var banks = appSettings.banks.length > 0 ? appSettings.banks : (d.accounts || []);
   banks.forEach(function (v) {
     var o = document.createElement('option');
@@ -2800,6 +2903,10 @@ window.onload = function () {
     document.body.classList.add('compact-mode');
     document.getElementById('compactToggleBtn').textContent = '📐 Расширенный';
   }
+  
+  // 🔥 ЗАГРУЖАЕМ РЕЖИМ АВТОРИЗАЦИИ 🔥
+  loadAuthMode();
+  
   var session = localStorage.getItem('luminous_session');
   if (session) {
     try {
@@ -2823,7 +2930,11 @@ window.onload = function () {
       document.getElementById('loginInput').focus();
     }
   } else {
-    document.getElementById('loginInput').focus();
+    // 🔥 АВТОМАТИЧЕСКИЙ ВХОД В ТЕСТОВОМ РЕЖИМЕ 🔥
+    autoLoginForTest();
+    if (!currentUser) {
+      document.getElementById('loginInput').focus();
+    }
   }
   initFilters();
   initDesignerResize();
