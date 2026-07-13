@@ -411,7 +411,7 @@ body.compact-mode .filters-bar select,body.compact-mode .filters-bar input{font-
     <button class="nav-item" onclick="switchTab('builder')">🔧 Конструктор</button>
     <button class="nav-item" onclick="switchTab('analytics')">📈 Аналитика</button>
     <button class="nav-item" onclick="refreshData()">🔄 Обновить</button>
-    <!-- 🔥 КНОПКА ПЕРЕКЛЮЧЕНИЯ АВТОРИЗАЦИИ 🔥 -->
+    <!-- Кнопка переключения авторизации -->
     <button class="nav-item" onclick="toggleAuthMode()" id="toggleAuthBtn" style="background:rgba(108,92,231,0.2);color:var(--primary);">🔒 Авторизация ВКЛ</button>
   </div>
   
@@ -611,10 +611,7 @@ body.compact-mode .filters-bar select,body.compact-mode .filters-bar input{font-
         <option value="vibrant">💥 Яркая</option>
         <option value="dark">🌙 Тёмная</option>
       </select>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);"><input type="checkbox" id="builderShowLabels" checked> Подписи</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);"><input type="checkbox" id="builderSmooth" checked> Сглаживание</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);"><input type="checkbox" id="builderStacked"> С накоплением</label>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);"><input type="checkbox" id="builderAnimate" checked> Анимация</label>
+      <!-- Убраны неработающие чекбоксы: Подписи, Сглаживание, С накоплением, Анимация -->
       <button class="btn-reset" onclick="buildChart()">🚀 Построить</button>
       <button class="btn-reset" onclick="exportBuilderChart()">📥 Экспорт PNG</button>
     </div>
