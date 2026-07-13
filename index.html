@@ -15,11 +15,22 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Luminous">
 
-<!-- Внешние библиотеки -->
+<!-- ============================================ -->
+<!-- 1. СНАЧАЛА Firebase SDK (ОБЯЗАТЕЛЬНО!)       -->
+<!-- ============================================ -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+<!-- ============================================ -->
+<!-- 2. ПОТОМ внешние библиотеки                   -->
+<!-- ============================================ -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
-<!-- Service Worker -->
+<!-- ============================================ -->
+<!-- 3. Service Worker                            -->
+<!-- ============================================ -->
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
@@ -28,7 +39,9 @@
   }
 </script>
 
-<!-- Подключение модулей -->
+<!-- ============================================ -->
+<!-- 4. ПОТОМ наши файлы (используют firebase)    -->
+<!-- ============================================ -->
 <script src="firebase-config.js"></script>
 <script src="app.js"></script>
 
