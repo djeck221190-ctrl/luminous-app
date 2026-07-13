@@ -1,4 +1,4 @@
-// app.js - ПОЛНАЯ ВЕРСИЯ С АВТОМАТИЧЕСКИМ ВЫБОРОМ РЕЖИМА
+// app.js - ПОЛНАЯ ВЕРСИЯ ДЛЯ GOOGLE APPS SCRIPT
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -174,7 +174,7 @@ function toggleCompactMode() {
 }
 
 // ============================================
-// АВТОРИЗАЦИЯ (УНИВЕРСАЛЬНАЯ)
+// АВТОРИЗАЦИЯ
 // ============================================
 function showRegister() {
   document.getElementById('loginForm').style.display = 'none';
@@ -190,30 +190,7 @@ function showLogin() {
   document.getElementById('regSuccess').style.display = 'none';
 }
 
-// ============================================
-// УНИВЕРСАЛЬНЫЙ ВЫЗОВ ФУНКЦИЙ
-// ============================================
-function callScriptFunction(funcName, params, successHandler, errorHandler) {
-  // Если доступен google.script.run - используем его
-  if (typeof google !== 'undefined' && google.script && google.script.run) {
-    try {
-      var runner = google.script.run;
-      if (successHandler) runner.withSuccessHandler(successHandler);
-      if (errorHandler) runner.withFailureHandler(errorHandler);
-      runner[funcName].apply(null, params);
-      return true;
-    } catch(e) {
-      console.warn('Google.script.run failed, using Firebase:', e);
-      return false;
-    }
-  }
-  return false; // Нет google.script.run
-}
-
-// ============================================
-// РЕГИСТРАЦИЯ (УНИВЕРСАЛЬНАЯ)
-// ============================================
-async function register() {
+function register() {
   var login = document.getElementById('regLogin').value.trim();
   var password = document.getElementById('regPassword').value;
   var phone = document.getElementById('regPhone').value.trim();
@@ -243,68 +220,29 @@ async function register() {
     return;
   }
 
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('registerUser', [login, password, phone], function(result) {
-    if (result.success) {
-      successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
-      successEl.style.display = 'block';
-      setTimeout(function() {
-        showLogin();
-        document.getElementById('loginInput').value = login;
-        document.getElementById('passwordInput').value = '';
-        document.getElementById('passwordInput').focus();
-      }, 1500);
-    } else {
-      errorEl.textContent = '❌ ' + (result.error || 'Ошибка регистрации');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
+        successEl.style.display = 'block';
+        setTimeout(function() {
+          showLogin();
+          document.getElementById('loginInput').value = login;
+          document.getElementById('passwordInput').value = '';
+          document.getElementById('passwordInput').focus();
+        }, 1500);
+      } else {
+        errorEl.textContent = '❌ ' + (result.error || 'Ошибка регистрации');
+        errorEl.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(err) {
+      errorEl.textContent = 'Ошибка соединения: ' + err;
       errorEl.style.display = 'block';
-    }
-  }, function(err) {
-    // Если Google Apps Script не работает - используем Firebase
-    registerViaFirebase(login, password, phone, errorEl, successEl);
-  });
-
-  if (!gsSuccess) {
-    // Если google.script.run недоступен - используем Firebase
-    await registerViaFirebase(login, password, phone, errorEl, successEl);
-  }
+    })
+    .registerUser(login, password, phone);
 }
 
-async function registerViaFirebase(login, password, phone, errorEl, successEl) {
-  try {
-    var checkDoc = await db.collection('users').doc(login).get();
-    if (checkDoc.exists) {
-      errorEl.textContent = 'Пользователь с таким логином уже существует';
-      errorEl.style.display = 'block';
-      return;
-    }
-
-    await db.collection('users').doc(login).set({
-      login: login,
-      password: password,
-      phone: phone,
-      role: 'Пользователь',
-      active: true,
-      color: '#6c5ce7',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
-    successEl.style.display = 'block';
-    setTimeout(function() {
-      showLogin();
-      document.getElementById('loginInput').value = login;
-      document.getElementById('passwordInput').value = '';
-      document.getElementById('passwordInput').focus();
-    }, 1500);
-  } catch (error) {
-    errorEl.textContent = '❌ ' + error.message;
-    errorEl.style.display = 'block';
-  }
-}
-
-// ============================================
-// ВХОД (УНИВЕРСАЛЬНЫЙ)
-// ============================================
 function showLoginError(message) {
   var errorEl = document.getElementById('loginError');
   errorEl.textContent = message || '❌ Неверный логин или пароль';
@@ -315,7 +253,7 @@ function showLoginError(message) {
   }, 400);
 }
 
-async function checkLogin() {
+function checkLogin() {
   var login = document.getElementById('loginInput').value.trim();
   var password = document.getElementById('passwordInput').value;
   var errorEl = document.getElementById('loginError');
@@ -327,77 +265,40 @@ async function checkLogin() {
     return;
   }
 
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('loginUser', [login, password], function(result) {
-    if (result && result.success) {
-      loginSuccess(result.user);
-    } else {
-      showLoginError(result.error || 'Неверный логин или пароль');
-      document.getElementById('passwordInput').value = '';
-      document.getElementById('passwordInput').focus();
-    }
-  }, function(err) {
-    // Если Google Apps Script не работает - используем Firebase
-    loginViaFirebase(login, password);
-  });
-
-  if (!gsSuccess) {
-    await loginViaFirebase(login, password);
-  }
-}
-
-async function loginViaFirebase(login, password) {
-  try {
-    var userDoc = await db.collection('users').doc(login).get();
-    
-    if (userDoc.exists) {
-      var userData = userDoc.data();
-      
-      if (userData.active !== false && userData.password === password) {
-        loginSuccess({
-          id: userDoc.id,
-          login: userData.login,
-          phone: userData.phone || '',
-          role: userData.role || 'Пользователь',
-          color: userData.color || '#6c5ce7'
-        });
-      } else if (userData.password !== password) {
-        showLoginError('Неверный пароль');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result && result.success) {
+        currentUser = result.user;
+        localStorage.setItem('luminous_session', JSON.stringify({ 
+          user: currentUser, 
+          timestamp: Date.now() 
+        }));
+        
+        document.getElementById('loginScreen').style.opacity = '0';
+        setTimeout(function() {
+          document.getElementById('loginScreen').classList.add('hidden');
+          document.getElementById('loginScreen').style.opacity = '1';
+          document.getElementById('appContainer').style.display = 'flex';
+          document.getElementById('appContainer').style.animation = 'fadeIn 0.5s ease';
+          updateUserDisplay();
+          refreshData();
+          resetSessionTimer();
+          if (currentUser.role === 'Администратор') {
+            document.getElementById('adminPanel').style.display = 'flex';
+          } else {
+            document.getElementById('adminPanel').style.display = 'none';
+          }
+        }, 500);
+      } else {
+        showLoginError(result.error || 'Неверный логин или пароль');
         document.getElementById('passwordInput').value = '';
         document.getElementById('passwordInput').focus();
-      } else {
-        showLoginError('Пользователь деактивирован');
       }
-    } else {
-      showLoginError('Пользователь с таким логином не найден');
-    }
-  } catch (error) {
-    showLoginError('Ошибка: ' + error.message);
-  }
-}
-
-function loginSuccess(user) {
-  currentUser = user;
-  localStorage.setItem('luminous_session', JSON.stringify({ 
-    user: currentUser, 
-    timestamp: Date.now() 
-  }));
-  
-  document.getElementById('loginScreen').style.opacity = '0';
-  setTimeout(function() {
-    document.getElementById('loginScreen').classList.add('hidden');
-    document.getElementById('loginScreen').style.opacity = '1';
-    document.getElementById('appContainer').style.display = 'flex';
-    document.getElementById('appContainer').style.animation = 'fadeIn 0.5s ease';
-    updateUserDisplay();
-    refreshData();
-    resetSessionTimer();
-    if (currentUser.role === 'Администратор') {
-      document.getElementById('adminPanel').style.display = 'flex';
-    } else {
-      document.getElementById('adminPanel').style.display = 'none';
-    }
-  }, 500);
+    })
+    .withFailureHandler(function(err) {
+      showLoginError('Ошибка соединения: ' + err);
+    })
+    .loginUser(login, password);
 }
 
 function updateUserDisplay() {
@@ -405,16 +306,76 @@ function updateUserDisplay() {
     phoneEl = document.getElementById('userPhone'),
     badgeEl = document.getElementById('userRoleDisplay');
   if (currentUser) {
-    fullNameEl.textContent = currentUser.login;
-    phoneEl.textContent = currentUser.phone ? '+7' + currentUser.phone : '+7';
-    
-    if (currentUser.role && currentUser.role !== 'Пользователь') {
-      badgeEl.style.display = 'inline-block';
-      badgeEl.textContent = currentUser.role;
-      badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
-    } else {
-      badgeEl.style.display = 'none';
-    }
+    google.script.run
+      .withSuccessHandler(function(profile) {
+        if (profile && profile.surname && profile.name) {
+          var fullName = profile.surname + ' ' + profile.name;
+          if (profile.patronymic) fullName += ' ' + profile.patronymic;
+          fullNameEl.textContent = fullName;
+          phoneEl.textContent = profile.phone || '+7';
+          localStorage.setItem('luminous_user_profile', JSON.stringify(profile));
+        } else {
+          var saved = localStorage.getItem('luminous_user_profile');
+          if (saved) {
+            try {
+              var p = JSON.parse(saved);
+              if (p.surname && p.name) {
+                var fullName = p.surname + ' ' + p.name;
+                if (p.patronymic) fullName += ' ' + p.patronymic;
+                fullNameEl.textContent = fullName;
+                phoneEl.textContent = p.phone || '+7';
+              } else {
+                fullNameEl.textContent = currentUser.login;
+                phoneEl.textContent = '+7';
+              }
+            } catch (e) {
+              fullNameEl.textContent = currentUser.login;
+              phoneEl.textContent = '+7';
+            }
+          } else {
+            fullNameEl.textContent = currentUser.login;
+            phoneEl.textContent = '+7';
+          }
+        }
+        if (currentUser.role && currentUser.role !== 'Пользователь') {
+          badgeEl.style.display = 'inline-block';
+          badgeEl.textContent = currentUser.role;
+          badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
+        } else {
+          badgeEl.style.display = 'none';
+        }
+      })
+      .withFailureHandler(function() {
+        var saved = localStorage.getItem('luminous_user_profile');
+        if (saved) {
+          try {
+            var p = JSON.parse(saved);
+            if (p.surname && p.name) {
+              var fullName = p.surname + ' ' + p.name;
+              if (p.patronymic) fullName += ' ' + p.patronymic;
+              fullNameEl.textContent = fullName;
+              phoneEl.textContent = p.phone || '+7';
+            } else {
+              fullNameEl.textContent = currentUser.login;
+              phoneEl.textContent = '+7';
+            }
+          } catch (e) {
+            fullNameEl.textContent = currentUser.login;
+            phoneEl.textContent = '+7';
+          }
+        } else {
+          fullNameEl.textContent = currentUser.login;
+          phoneEl.textContent = '+7';
+        }
+        if (currentUser.role && currentUser.role !== 'Пользователь') {
+          badgeEl.style.display = 'inline-block';
+          badgeEl.textContent = currentUser.role;
+          badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
+        } else {
+          badgeEl.style.display = 'none';
+        }
+      })
+      .getProfile(currentUser.login);
   } else {
     fullNameEl.textContent = 'Пользователь';
     phoneEl.textContent = '+7';
@@ -423,7 +384,7 @@ function updateUserDisplay() {
 }
 
 // ============================================
-// ВОССТАНОВЛЕНИЕ ПАРОЛЯ (УНИВЕРСАЛЬНОЕ)
+// ВОССТАНОВЛЕНИЕ ПАРОЛЯ
 // ============================================
 function showForgotPassword() {
   document.getElementById('forgotModal').classList.add('active');
@@ -440,7 +401,7 @@ function closeForgotModal() {
   document.getElementById('forgotModal').classList.remove('active');
 }
 
-async function checkForgotPhone() {
+function checkForgotPhone() {
   var phone = document.getElementById('forgotPhone').value.trim();
   var resultDiv = document.getElementById('forgotResult');
   var userDataDiv = document.getElementById('forgotUserData');
@@ -459,53 +420,27 @@ async function checkForgotPhone() {
     return;
   }
 
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('getUserByPhoneOnly', [phone], function(user) {
-    if (user) {
-      resultDiv.innerHTML = '✅ Пользователь найден!';
-      userDataDiv.innerHTML = '👤 Логин: <strong>' + user.login + '</strong><br>🔒 Пароль: <strong>' + user.password + '</strong>';
-      userDataDiv.style.display = 'block';
-      newPassSection.style.display = 'block';
-      document.getElementById('forgotNewPassword').value = '';
-      document.getElementById('forgotNewPassword').focus();
-      window.forgotLogin = user.login;
-    } else {
-      resultDiv.innerHTML = '❌ Пользователь с таким номером телефона не найден';
-    }
-  }, function(err) {
-    // Если Google Apps Script не работает - используем Firebase
-    checkForgotPhoneViaFirebase(phone, resultDiv, userDataDiv, newPassSection);
-  });
-
-  if (!gsSuccess) {
-    await checkForgotPhoneViaFirebase(phone, resultDiv, userDataDiv, newPassSection);
-  }
+  google.script.run
+    .withSuccessHandler(function(user) {
+      if (user) {
+        resultDiv.innerHTML = '✅ Пользователь найден!';
+        userDataDiv.innerHTML = '👤 Логин: <strong>' + user.login + '</strong><br>🔒 Пароль: <strong>' + user.password + '</strong>';
+        userDataDiv.style.display = 'block';
+        newPassSection.style.display = 'block';
+        document.getElementById('forgotNewPassword').value = '';
+        document.getElementById('forgotNewPassword').focus();
+        window.forgotLogin = user.login;
+      } else {
+        resultDiv.innerHTML = '❌ Пользователь с таким номером телефона не найден';
+      }
+    })
+    .withFailureHandler(function(err) {
+      resultDiv.innerHTML = 'Ошибка: ' + err;
+    })
+    .getUserByPhoneOnly(phone);
 }
 
-async function checkForgotPhoneViaFirebase(phone, resultDiv, userDataDiv, newPassSection) {
-  try {
-    var snapshot = await db.collection('users')
-      .where('phone', '==', phone)
-      .get();
-    
-    if (!snapshot.empty) {
-      var userData = snapshot.docs[0].data();
-      resultDiv.innerHTML = '✅ Пользователь найден!';
-      userDataDiv.innerHTML = '👤 Логин: <strong>' + userData.login + '</strong>';
-      userDataDiv.style.display = 'block';
-      newPassSection.style.display = 'block';
-      document.getElementById('forgotNewPassword').value = '';
-      document.getElementById('forgotNewPassword').focus();
-      window.forgotLogin = userData.login;
-    } else {
-      resultDiv.innerHTML = '❌ Пользователь с таким номером телефона не найден';
-    }
-  } catch (error) {
-    resultDiv.innerHTML = 'Ошибка: ' + error.message;
-  }
-}
-
-async function resetForgotPassword() {
+function resetForgotPassword() {
   var newPassword = document.getElementById('forgotNewPassword').value;
   var errorEl = document.getElementById('forgotError');
   var successEl = document.getElementById('forgotSuccess');
@@ -526,47 +461,26 @@ async function resetForgotPassword() {
     return;
   }
 
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('updateUserPassword', [login, newPassword], function(result) {
-    if (result) {
-      successEl.textContent = '✅ Пароль успешно изменён! Теперь войдите с новым паролем.';
-      successEl.style.display = 'block';
-      setTimeout(function() {
-        closeForgotModal();
-        document.getElementById('loginInput').value = login;
-        document.getElementById('passwordInput').focus();
-      }, 1500);
-    } else {
-      errorEl.textContent = '❌ Ошибка при смене пароля';
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result) {
+        successEl.textContent = '✅ Пароль успешно изменён! Теперь войдите с новым паролем.';
+        successEl.style.display = 'block';
+        setTimeout(function() {
+          closeForgotModal();
+          document.getElementById('loginInput').value = login;
+          document.getElementById('passwordInput').focus();
+        }, 1500);
+      } else {
+        errorEl.textContent = '❌ Ошибка при смене пароля';
+        errorEl.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(err) {
+      errorEl.textContent = 'Ошибка: ' + err;
       errorEl.style.display = 'block';
-    }
-  }, function(err) {
-    // Если Google Apps Script не работает - используем Firebase
-    resetForgotPasswordViaFirebase(login, newPassword, errorEl, successEl);
-  });
-
-  if (!gsSuccess) {
-    await resetForgotPasswordViaFirebase(login, newPassword, errorEl, successEl);
-  }
-}
-
-async function resetForgotPasswordViaFirebase(login, newPassword, errorEl, successEl) {
-  try {
-    await db.collection('users').doc(login).update({
-      password: newPassword
-    });
-    
-    successEl.textContent = '✅ Пароль успешно изменён! Теперь войдите с новым паролем.';
-    successEl.style.display = 'block';
-    setTimeout(function() {
-      closeForgotModal();
-      document.getElementById('loginInput').value = login;
-      document.getElementById('passwordInput').focus();
-    }, 1500);
-  } catch (error) {
-    errorEl.textContent = 'Ошибка: ' + error.message;
-    errorEl.style.display = 'block';
-  }
+    })
+    .updateUserPassword(login, newPassword);
 }
 
 // ============================================
@@ -600,7 +514,7 @@ function toggleEmojiPicker(inputId) {
 }
 
 // ============================================
-// ДИЗАЙНЕР ОКОН (LOCALSTORAGE)
+// ДИЗАЙНЕР ОКОН
 // ============================================
 function showModalDesigner() {
   document.getElementById('modalDesigner').classList.add('active');
@@ -614,14 +528,18 @@ function closeModalDesigner() {
 function loadDesignerSettings() {
   var windowSelect = document.getElementById('designerWindowSelect');
   var selected = windowSelect.value;
-  var settings = JSON.parse(localStorage.getItem('luminous_modal_settings') || '{}');
-  var s = settings[selected] || { width: 460, height: 600, fieldOrder: 'Дата,Описание,Сумма,Тип,Категория,Счет,Банк' };
-  document.getElementById('designerName').value = selected;
-  document.getElementById('designerWidth').value = s.width || 460;
-  document.getElementById('designerHeight').value = s.height || 600;
-  document.getElementById('designerOrder').value = s.fieldOrder || '';
-  updateDesignerPreview();
-  
+  google.script.run
+    .withSuccessHandler(function(settings) {
+      var s = settings[selected] || settings['Добавить транзакцию'];
+      if (s) {
+        document.getElementById('designerName').value = selected;
+        document.getElementById('designerWidth').value = s.width || 460;
+        document.getElementById('designerHeight').value = s.height || 600;
+        document.getElementById('designerOrder').value = s.fieldOrder || '';
+        updateDesignerPreview();
+      }
+    })
+    .getModalSettings();
   windowSelect.onchange = function () {
     loadDesignerSettings();
   };
@@ -645,15 +563,22 @@ function applyDesignerSettings() {
 
 function saveDesignerSettings() {
   var name = document.getElementById('designerName').value;
-  var settings = JSON.parse(localStorage.getItem('luminous_modal_settings') || '{}');
+  var settings = {};
   settings[name] = {
     width: parseInt(document.getElementById('designerWidth').value) || 460,
     height: parseInt(document.getElementById('designerHeight').value) || 600,
     fieldOrder: document.getElementById('designerOrder').value || ''
   };
-  localStorage.setItem('luminous_modal_settings', JSON.stringify(settings));
-  showToast('✅ Настройки сохранены!', 'Успешно');
-  closeModalDesigner();
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result) {
+        showToast('✅ Настройки сохранены!', 'Успешно');
+        closeModalDesigner();
+      } else {
+        showToast('❌ Ошибка сохранения', 'Ошибка');
+      }
+    })
+    .updateModalSettings(settings);
 }
 
 function initDesignerResize() {
@@ -790,23 +715,31 @@ function getCurrentLayout() {
 
 function saveLayout() {
   var layout = getCurrentLayout();
-  localStorage.setItem('luminous_layout', JSON.stringify(layout));
-  savedLayout = layout;
-  showToast('✅ Расположение сохранено!', 'Успешно');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result) {
+        savedLayout = layout;
+        showToast('✅ Расположение сохранено!', 'Успешно');
+      }
+    })
+    .saveDashboardLayout(layout);
 }
 
 function loadSavedLayout() {
-  var layout = JSON.parse(localStorage.getItem('luminous_layout') || '{}');
-  if (Object.keys(layout).length > 0) {
-    savedLayout = layout;
-    for (var id in layout) {
-      var el = document.getElementById(id);
-      if (el) {
-        if (layout[id].width) el.style.width = layout[id].width + 'px';
-        if (layout[id].height) el.style.height = layout[id].height + 'px';
+  google.script.run
+    .withSuccessHandler(function(layout) {
+      if (Object.keys(layout).length > 0) {
+        savedLayout = layout;
+        for (var id in layout) {
+          var el = document.getElementById(id);
+          if (el) {
+            if (layout[id].width) el.style.width = layout[id].width + 'px';
+            if (layout[id].height) el.style.height = layout[id].height + 'px';
+          }
+        }
       }
-    }
-  }
+    })
+    .getDashboardLayout();
 }
 
 function undoLayout() {
@@ -947,7 +880,7 @@ function resetUnifiedFiltersCat() {
 }
 
 // ============================================
-// ЗАГРУЗКА ДАННЫХ (УНИВЕРСАЛЬНАЯ)
+// ЗАГРУЗКА ДАННЫХ
 // ============================================
 function refreshData() {
   loadData();
@@ -958,34 +891,9 @@ function showLoading() {
   document.getElementById('dashboardYearlyAnalytics').innerHTML = '<div class="loading-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
 }
 
-async function loadData() {
+function loadData() {
   showLoading();
   
-  if (!currentUser || !currentUser.login) {
-    showToast('Необходимо войти', 'Ошибка');
-    return;
-  }
-
-  var activeFilters = getActiveFilters();
-
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('getAppData', [activeFilters], function(d) {
-    if (d && !d.error) {
-      processLoadedData(d);
-    } else {
-      loadDataFromFirebase();
-    }
-  }, function(err) {
-    // Если Google Apps Script не работает - используем Firebase
-    loadDataFromFirebase();
-  });
-
-  if (!gsSuccess) {
-    await loadDataFromFirebase();
-  }
-}
-
-function getActiveFilters() {
   var activeFilters = { period: 'all', category: 'all', bank: 'all', type: 'all', search: '', dateFrom: '', dateTo: '' };
   var activeSection = document.querySelector('.section.active');
   if (activeSection) {
@@ -1014,80 +922,29 @@ function getActiveFilters() {
       activeFilters.dateTo = document.getElementById('unifiedDateToCat').value;
     }
   }
-  return activeFilters;
-}
 
-async function loadDataFromFirebase() {
-  try {
-    var snapshot = await db.collection('transactions')
-      .where('userId', '==', currentUser.login)
-      .orderBy('date', 'desc')
-      .get();
-    
-    var tx = [];
-    snapshot.forEach(function(doc) {
-      tx.push({ id: doc.id, ...doc.data() });
-    });
-    allTx = tx;
-    allData = processData(tx);
-    
-    // Загружаем категории
-    var catSnapshot = await db.collection('categories')
-      .where('userId', '==', currentUser.login)
-      .get();
-    
-    var categories = [];
-    catSnapshot.forEach(function(doc) {
-      categories.push(doc.data().name);
-    });
-    if (categories.length > 0) {
-      allData.categories = categories;
-    }
-    
-    processLoadedData(allData);
-  } catch (error) {
-    console.error('Firebase load error:', error);
-    showToast('Ошибка загрузки данных: ' + error.message, 'Ошибка');
-    allTx = [];
-    allData = getEmptyData();
-  }
-}
-
-function processLoadedData(d) {
-  allData = d;
-  allTx = d.transactions || [];
-  txnAll = allTx.slice();
-  populateSelects(d);
-  updateUI(d);
-  updateCategoryUI(d);
-  updateAllCategoriesList(d);
-  updateDashboardYearly(d);
-  populateYearlyFilter(d);
-  loadSavedLayout();
-}
-
-function getEmptyData() {
-  return {
-    transactions: [],
-    totalIncome: 0,
-    totalExpense: 0,
-    balance: 0,
-    count: 0,
-    monthLabels: [],
-    monthIncome: [],
-    monthExpense: [],
-    monthDelta: [],
-    categoryIncome: {},
-    categoryExpense: {},
-    bankData: {},
-    bankLabels: [],
-    bankIncomeData: [],
-    bankExpenseData: [],
-    years: [],
-    categories: ['Продукты', 'Транспорт', 'Развлечения'],
-    accounts: ['Основной', 'Сберегательный'],
-    yearlyData: {}
-  };
+  google.script.run
+    .withSuccessHandler(function(d) {
+      if (d.error) { 
+        console.error('Data error:', d.message); 
+        return; 
+      }
+      allData = d;
+      allTx = d.transactions || [];
+      txnAll = allTx.slice();
+      populateSelects(d);
+      updateUI(d);
+      updateCategoryUI(d);
+      updateAllCategoriesList(d);
+      updateDashboardYearly(d);
+      populateYearlyFilter(d);
+      loadSavedLayout();
+    })
+    .withFailureHandler(function(err) {
+      console.error('Load error:', err);
+      showToast('Ошибка загрузки: ' + err, 'Ошибка');
+    })
+    .getAppData(activeFilters);
 }
 
 // ============================================
@@ -1641,7 +1498,7 @@ function toggleAllCategories() {
 }
 
 // ============================================
-// КАТЕГОРИИ (CRUD - УНИВЕРСАЛЬНЫЙ)
+// КАТЕГОРИИ (CRUD)
 // ============================================
 function showEditCategoryModal(categoryName) {
   var catData = allData ? allData.categories || [] : [];
@@ -1663,118 +1520,59 @@ function closeEditCategoryModal() {
   document.getElementById('editCategoryModal').classList.remove('active');
 }
 
-async function updateCategory() {
+function updateCategory() {
   var oldName = document.getElementById('editCatOldName').value;
   var name = document.getElementById('editCatName').value.trim();
   var emoji = document.getElementById('editCatEmoji').value.trim() || '📌';
   var type = document.getElementById('editCatType').value;
   var sub = document.getElementById('editCatSub').value.trim() || 'Разное';
+  var errorEl = document.getElementById('editCatError');
+  var successEl = document.getElementById('editCatSuccess');
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
   
   if (!name) {
-    document.getElementById('editCatError').textContent = 'Введите название категории';
-    document.getElementById('editCatError').style.display = 'block';
+    errorEl.textContent = 'Введите название категории';
+    errorEl.style.display = 'block';
     return;
   }
 
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('updateCategory', [oldName, name, emoji, type, sub], function(result) {
-    if (result.success) {
-      document.getElementById('editCatSuccess').style.display = 'block';
-      setTimeout(function() {
-        closeEditCategoryModal();
-        refreshData();
-      }, 1000);
-    } else {
-      document.getElementById('editCatError').textContent = result.error || 'Ошибка обновления';
-      document.getElementById('editCatError').style.display = 'block';
-    }
-  }, function(err) {
-    updateCategoryViaFirebase(oldName, name, emoji, type, sub);
-  });
-
-  if (!gsSuccess) {
-    await updateCategoryViaFirebase(oldName, name, emoji, type, sub);
-  }
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        successEl.style.display = 'block';
+        setTimeout(function() {
+          closeEditCategoryModal();
+          refreshData();
+        }, 1000);
+      } else {
+        errorEl.textContent = result.error || 'Ошибка обновления';
+        errorEl.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(err) {
+      errorEl.textContent = 'Ошибка: ' + err;
+      errorEl.style.display = 'block';
+    })
+    .updateCategory(oldName, name, emoji, type, sub);
 }
 
-async function updateCategoryViaFirebase(oldName, name, emoji, type, sub) {
-  try {
-    // Обновляем категорию в Firestore
-    var snapshot = await db.collection('categories')
-      .where('userId', '==', currentUser.login)
-      .where('name', '==', oldName)
-      .get();
-    
-    if (!snapshot.empty) {
-      await snapshot.docs[0].ref.update({
-        name: name,
-        emoji: emoji,
-        type: type,
-        sub: sub
-      });
-      
-      // Обновляем транзакции с этой категорией
-      var txnSnapshot = await db.collection('transactions')
-        .where('userId', '==', currentUser.login)
-        .where('category', '==', oldName)
-        .get();
-      
-      txnSnapshot.forEach(function(doc) {
-        doc.ref.update({ category: name });
-      });
-      
-      document.getElementById('editCatSuccess').style.display = 'block';
-      setTimeout(function() {
-        closeEditCategoryModal();
-        refreshData();
-      }, 1000);
-    } else {
-      document.getElementById('editCatError').textContent = 'Категория не найдена';
-      document.getElementById('editCatError').style.display = 'block';
-    }
-  } catch (error) {
-    document.getElementById('editCatError').textContent = 'Ошибка: ' + error.message;
-    document.getElementById('editCatError').style.display = 'block';
-  }
-}
-
-async function deleteCategory(name) {
+function deleteCategory(name) {
   if (!confirm('Удалить категорию "' + name + '" ?')) return;
-
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('deleteCategory', [name], function(result) {
-    if (result.success) {
-      showToast('Категория удалена', 'Успешно');
-      refreshData();
-    } else {
-      showToast(result.error || 'Ошибка удаления', 'Ошибка');
-    }
-  }, function(err) {
-    deleteCategoryViaFirebase(name);
-  });
-
-  if (!gsSuccess) {
-    await deleteCategoryViaFirebase(name);
-  }
-}
-
-async function deleteCategoryViaFirebase(name) {
-  try {
-    var snapshot = await db.collection('categories')
-      .where('userId', '==', currentUser.login)
-      .where('name', '==', name)
-      .get();
-    
-    if (!snapshot.empty) {
-      await snapshot.docs[0].ref.delete();
-      showToast('Категория удалена', 'Успешно');
-      refreshData();
-    } else {
-      showToast('Категория не найдена', 'Ошибка');
-    }
-  } catch (error) {
-    showToast('Ошибка: ' + error.message, 'Ошибка');
-  }
+  
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        showToast('Категория удалена', 'Успешно');
+        refreshData();
+      } else {
+        showToast(result.error || 'Ошибка удаления', 'Ошибка');
+      }
+    })
+    .withFailureHandler(function(err) {
+      showToast('Ошибка: ' + err, 'Ошибка');
+    })
+    .deleteCategory(name);
 }
 
 // ============================================
@@ -2050,76 +1848,21 @@ function comparePeriods() {
   var filters2 = { period: period2, dateFrom: dateFrom2, dateTo: dateTo2, category: 'all', bank: 'all', type: 'all', search: '' };
   document.getElementById('compareResult').innerHTML = '<div class="loading-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
   
-  // Пробуем через Google Apps Script для первого периода
-  var gsSuccess1 = callScriptFunction('getAppData', [filters1], function(d1) {
-    // Пробуем через Google Apps Script для второго периода
-    var gsSuccess2 = callScriptFunction('getAppData', [filters2], function(d2) {
-      renderCompareResult(d1, d2, period1, period2);
-    }, function(err) {
-      // Если не работает - используем Firebase для второго периода
-      getCompareDataFromFirebase(filters2, function(d2) {
-        renderCompareResult(d1, d2, period1, period2);
-      });
-    });
-    if (!gsSuccess2) {
-      getCompareDataFromFirebase(filters2, function(d2) {
-        renderCompareResult(d1, d2, period1, period2);
-      });
-    }
-  }, function(err) {
-    // Если не работает - используем Firebase для обоих периодов
-    getCompareDataFromFirebase(filters1, function(d1) {
-      getCompareDataFromFirebase(filters2, function(d2) {
-        renderCompareResult(d1, d2, period1, period2);
-      });
-    });
-  });
-  
-  if (!gsSuccess1) {
-    getCompareDataFromFirebase(filters1, function(d1) {
-      getCompareDataFromFirebase(filters2, function(d2) {
-        renderCompareResult(d1, d2, period1, period2);
-      });
-    });
-  }
-}
-
-function getCompareDataFromFirebase(filters, callback) {
-  // Простая фильтрация данных из Firebase
-  if (!allData || !allData.transactions) {
-    callback(getEmptyData());
-    return;
-  }
-  
-  var filtered = allData.transactions.filter(function(t) {
-    // Применяем фильтры
-    var dateObj = new Date(t.date.split('.').reverse().join('-'));
-    var now = new Date();
-    
-    if (filters.period === 'currentYear') {
-      if (dateObj.getFullYear() !== now.getFullYear()) return false;
-    } else if (filters.period === 'currentMonth') {
-      if (dateObj.getFullYear() !== now.getFullYear() || dateObj.getMonth() !== now.getMonth()) return false;
-    } else if (filters.period === 'lastMonth') {
-      var lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      if (dateObj.getFullYear() !== lastMonth.getFullYear() || dateObj.getMonth() !== lastMonth.getMonth()) return false;
-    } else if (filters.period === '6months') {
-      var sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-      if (dateObj < sixMonthsAgo) return false;
-    } else if (filters.period === '12months') {
-      var twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 12, 1);
-      if (dateObj < twelveMonthsAgo) return false;
-    } else if (filters.period === 'custom') {
-      if (filters.dateFrom && filters.dateTo) {
-        var from = new Date(filters.dateFrom);
-        var to = new Date(filters.dateTo);
-        if (dateObj < from || dateObj > to) return false;
-      }
-    }
-    return true;
-  });
-  
-  callback(processData(filtered));
+  google.script.run
+    .withSuccessHandler(function(d1) {
+      google.script.run
+        .withSuccessHandler(function(d2) {
+          renderCompareResult(d1, d2, period1, period2);
+        })
+        .withFailureHandler(function(err) {
+          showToast('Ошибка загрузки данных 2: ' + err, 'Ошибка');
+        })
+        .getAppData(filters2);
+    })
+    .withFailureHandler(function(err) {
+      showToast('Ошибка загрузки данных 1: ' + err, 'Ошибка');
+    })
+    .getAppData(filters1);
 }
 
 function renderCompareResult(d1, d2, label1, label2) {
@@ -2414,7 +2157,7 @@ function showKpiDetail(type) {
 }
 
 // ============================================
-// ТРАНЗАКЦИИ (CRUD - УНИВЕРСАЛЬНЫЙ)
+// ТРАНЗАКЦИИ (CRUD)
 // ============================================
 function showAddModal() {
   document.getElementById('addModal').classList.add('active');
@@ -2469,37 +2212,25 @@ function editTransaction(id) {
   }, 100);
 }
 
-async function deleteTransaction(id) {
+function deleteTransaction(id) {
   if (!confirm('Удалить эту транзакцию?')) return;
-
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('deleteTransaction', [id], function(result) {
-    if (result.success) {
-      showToast('Транзакция удалена', 'Успешно');
-      refreshData();
-    } else {
-      showToast(result.error || 'Ошибка удаления', 'Ошибка');
-    }
-  }, function(err) {
-    deleteTransactionViaFirebase(id);
-  });
-
-  if (!gsSuccess) {
-    await deleteTransactionViaFirebase(id);
-  }
+  
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        showToast('Транзакция удалена', 'Успешно');
+        refreshData();
+      } else {
+        showToast(result.error || 'Ошибка удаления', 'Ошибка');
+      }
+    })
+    .withFailureHandler(function(err) {
+      showToast('Ошибка: ' + err, 'Ошибка');
+    })
+    .deleteTransaction(id);
 }
 
-async function deleteTransactionViaFirebase(id) {
-  try {
-    await db.collection('transactions').doc(id).delete();
-    showToast('Транзакция удалена', 'Успешно');
-    refreshData();
-  } catch (error) {
-    showToast('Ошибка: ' + error.message, 'Ошибка');
-  }
-}
-
-async function submitTx() {
+function submitTx() {
   var id = document.getElementById('editId').value;
   var date = document.getElementById('mDate').value,
     desc = document.getElementById('mDesc').value.trim();
@@ -2523,67 +2254,37 @@ async function submitTx() {
     return;
   }
   document.getElementById('mSuccess').style.display = 'none';
-
-  // Преобразуем дату
-  var dt = new Date(date);
-  var formattedDate = dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  var monthYear = ('0' + (dt.getMonth() + 1)).slice(-2) + '.' + dt.getFullYear();
-  var year = dt.getFullYear();
-  var finalAmount = type === 'Расход' ? -Math.abs(final) : Math.abs(final);
-
-  var txData = {
-    date: formattedDate,
-    description: desc,
-    amount: finalAmount,
-    type: type,
-    category: cat || 'Без категории',
-    account: acc || 'Основной',
-    bank: bank || 'Сбербанк',
-    monthYear: monthYear,
-    year: year,
-    userId: currentUser.login,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  };
-
-  // Сначала пишем в Firebase
-  try {
-    if (id) {
-      // Обновление
-      await db.collection('transactions').doc(id).update(txData);
-      document.getElementById('mSuccess').textContent = '✅ Транзакция обновлена!';
-    } else {
-      // Добавление
-      var docRef = await db.collection('transactions').add(txData);
-      txData.id = docRef.id;
-      document.getElementById('mSuccess').textContent = '✅ Транзакция добавлена!';
-    }
-    document.getElementById('mSuccess').style.display = 'block';
-    
-    // Отправляем в Google Sheets (если доступен)
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      try {
-        if (id) {
-          google.script.run.updateTransaction(id, formattedDate, desc, finalAmount, type, cat, acc, bank);
-        } else {
-          google.script.run.saveTransaction(formattedDate, desc, finalAmount, type, cat, acc, bank);
-        }
-      } catch(e) {
-        console.warn('Google Sheets sync failed:', e);
+  
+  var txData = { date: date, description: desc, amount: final, type: type, category: cat, account: acc, bank: bank };
+  
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result && result.success) {
+        document.getElementById('mSuccess').style.display = 'block';
+        document.getElementById('mSuccess').textContent = id ? '✅ Транзакция обновлена!' : '✅ Транзакция добавлена!';
+        setTimeout(function() {
+          closeModal();
+          refreshData();
+        }, 800);
+      } else {
+        document.getElementById('mError').style.display = 'block';
+        document.getElementById('mError').textContent = result.error || 'Ошибка сохранения';
       }
-    }
-    
-    setTimeout(function() {
-      closeModal();
-      refreshData();
-    }, 800);
-  } catch (error) {
-    document.getElementById('mError').style.display = 'block';
-    document.getElementById('mError').textContent = 'Ошибка: ' + error.message;
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('mError').style.display = 'block';
+      document.getElementById('mError').textContent = 'Ошибка: ' + err;
+    });
+  
+  if (id) {
+    google.script.run.updateTransaction(id, date, desc, final, type, cat, acc, bank);
+  } else {
+    google.script.run.saveTransaction(date, desc, final, type, cat, acc, bank);
   }
 }
 
 // ============================================
-// ДОБАВЛЕНИЕ КАТЕГОРИИ (УНИВЕРСАЛЬНЫЙ)
+// ДОБАВЛЕНИЕ КАТЕГОРИИ
 // ============================================
 function showAddCategoryModal() {
   document.getElementById('addCategoryModal').classList.add('active');
@@ -2599,7 +2300,7 @@ function closeAddCategoryModal() {
   document.getElementById('addCategoryModal').classList.remove('active');
 }
 
-async function addCategory() {
+function addCategory() {
   var name = document.getElementById('newCatName').value.trim();
   var emoji = document.getElementById('newCatEmoji').value.trim() || '📌';
   var type = document.getElementById('newCatType').value;
@@ -2615,64 +2316,29 @@ async function addCategory() {
     return;
   }
 
-  // Пробуем через Google Apps Script
-  var gsSuccess = callScriptFunction('addCategory', [name, emoji, type, sub], function(result) {
-    if (result.success) {
-      successEl.textContent = '✅ Категория добавлена!';
-      successEl.style.display = 'block';
-      setTimeout(function() {
-        closeAddCategoryModal();
-        refreshData();
-      }, 1000);
-    } else {
-      errorEl.textContent = '❌ ' + (result.error || 'Ошибка добавления');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        successEl.textContent = '✅ Категория добавлена!';
+        successEl.style.display = 'block';
+        setTimeout(function() {
+          closeAddCategoryModal();
+          refreshData();
+        }, 1000);
+      } else {
+        errorEl.textContent = '❌ ' + (result.error || 'Ошибка добавления');
+        errorEl.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(err) {
+      errorEl.textContent = 'Ошибка: ' + err;
       errorEl.style.display = 'block';
-    }
-  }, function(err) {
-    addCategoryViaFirebase(name, emoji, type, sub, errorEl, successEl);
-  });
-
-  if (!gsSuccess) {
-    await addCategoryViaFirebase(name, emoji, type, sub, errorEl, successEl);
-  }
-}
-
-async function addCategoryViaFirebase(name, emoji, type, sub, errorEl, successEl) {
-  try {
-    var snapshot = await db.collection('categories')
-      .where('userId', '==', currentUser.login)
-      .where('name', '==', name)
-      .get();
-    
-    if (!snapshot.empty) {
-      errorEl.textContent = 'Категория с таким названием уже существует';
-      errorEl.style.display = 'block';
-      return;
-    }
-
-    await db.collection('categories').add({
-      name: name,
-      emoji: emoji,
-      type: type,
-      sub: sub,
-      userId: currentUser.login,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    
-    successEl.textContent = '✅ Категория добавлена!';
-    successEl.style.display = 'block';
-    setTimeout(function() {
-      closeAddCategoryModal();
-      refreshData();
-    }, 1000);
-  } catch (error) {
-    errorEl.textContent = 'Ошибка: ' + error.message;
-    errorEl.style.display = 'block';
-  }
+    })
+    .addCategory(name, emoji, type, sub);
 }
 
 // ============================================
-// ПРОФИЛЬ (УНИВЕРСАЛЬНЫЙ)
+// ПРОФИЛЬ
 // ============================================
 function capitalizeFirst(input) {
   var val = input.value.replace(/[^а-яА-ЯёЁ]/g, '');
@@ -2710,44 +2376,40 @@ function openProfileModal() {
     yearSel.appendChild(opt);
   }
   
-  // Загружаем данные из Firebase
-  loadProfileFromFirebase();
-}
-
-async function loadProfileFromFirebase() {
-  try {
-    var userDoc = await db.collection('users').doc(currentUser.login).get();
-    if (userDoc.exists) {
-      var data = userDoc.data();
-      document.getElementById('pfSurname').value = data.surname || '';
-      document.getElementById('pfName').value = data.name || '';
-      document.getElementById('pfPatronymic').value = data.patronymic || '';
-      var phoneVal = data.phone ? data.phone.replace('+7', '') : '';
-      document.getElementById('pfPhone').value = phoneVal;
-      if (data.birthdate) {
-        var parts = data.birthdate.split('.');
-        if (parts.length === 3) {
-          document.getElementById('pfDay').value = parts[0];
-          document.getElementById('pfMonth').value = parts[1];
-          document.getElementById('pfYear').value = parts[2];
+  google.script.run
+    .withSuccessHandler(function(profile) {
+      if (profile) {
+        document.getElementById('pfSurname').value = profile.surname || '';
+        document.getElementById('pfName').value = profile.name || '';
+        document.getElementById('pfPatronymic').value = profile.patronymic || '';
+        var phoneVal = profile.phone ? profile.phone.replace('+7', '') : '';
+        document.getElementById('pfPhone').value = phoneVal;
+        if (profile.birthdate) {
+          var parts = profile.birthdate.split('.');
+          if (parts.length === 3) {
+            document.getElementById('pfDay').value = parts[0];
+            document.getElementById('pfMonth').value = parts[1];
+            document.getElementById('pfYear').value = parts[2];
+          }
         }
+        document.getElementById('pfSaveBtn').style.display = 'none';
+        document.getElementById('pfEditBtn').style.display = 'inline-block';
+        document.getElementById('pfSuccess').style.display = 'none';
+        document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
+          el.disabled = true;
+        });
+      } else {
+        document.getElementById('pfSaveBtn').style.display = 'inline-block';
+        document.getElementById('pfEditBtn').style.display = 'none';
+        document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
+          el.disabled = false;
+        });
       }
-      document.getElementById('pfSaveBtn').style.display = 'none';
-      document.getElementById('pfEditBtn').style.display = 'inline-block';
-      document.getElementById('pfSuccess').style.display = 'none';
-      document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
-        el.disabled = true;
-      });
-    } else {
-      document.getElementById('pfSaveBtn').style.display = 'inline-block';
-      document.getElementById('pfEditBtn').style.display = 'none';
-      document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
-        el.disabled = false;
-      });
-    }
-  } catch (error) {
-    showToast('Ошибка загрузки данных: ' + error.message, 'Ошибка');
-  }
+    })
+    .withFailureHandler(function(err) {
+      showToast('Ошибка загрузки данных: ' + err, 'Ошибка');
+    })
+    .getProfile(currentUser ? currentUser.login : '');
 }
 
 function closeProfileModal() {
@@ -2763,7 +2425,7 @@ function editProfile() {
   document.getElementById('pfSuccess').style.display = 'none';
 }
 
-async function saveProfile() {
+function saveProfile() {
   var surname = document.getElementById('pfSurname').value.trim();
   var name = document.getElementById('pfName').value.trim();
   var patronymic = document.getElementById('pfPatronymic').value.trim();
@@ -2789,35 +2451,34 @@ async function saveProfile() {
   var birthdate = '';
   if (day && month && year) birthdate = day + '.' + month + '.' + year;
 
-  try {
-    await db.collection('users').doc(currentUser.login).update({
-      surname: surname,
-      name: name,
-      patronymic: patronymic,
-      phone: phone,
-      birthdate: birthdate
-    });
-    
-    successEl.textContent = '✅ Данные сохранены!';
-    successEl.style.display = 'block';
-    document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
-      el.disabled = true;
-    });
-    document.getElementById('pfSaveBtn').style.display = 'none';
-    document.getElementById('pfEditBtn').style.display = 'inline-block';
-    updateUserDisplay();
-    showToast('Данные профиля сохранены', 'Успешно');
-    
-    // Обновляем текущего пользователя
-    currentUser.phone = phone;
-    
-    setTimeout(function() {
-      closeProfileModal();
-    }, 1500);
-  } catch (error) {
-    errorEl.textContent = 'Ошибка: ' + error.message;
-    errorEl.style.display = 'block';
-  }
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result.success) {
+        successEl.textContent = '✅ Данные сохранены!';
+        successEl.style.display = 'block';
+        document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
+          el.disabled = true;
+        });
+        document.getElementById('pfSaveBtn').style.display = 'none';
+        document.getElementById('pfEditBtn').style.display = 'inline-block';
+        if (result.profile) {
+          localStorage.setItem('luminous_user_profile', JSON.stringify(result.profile));
+        }
+        updateUserDisplay();
+        showToast('Данные профиля сохранены', 'Успешно');
+        setTimeout(function() {
+          closeProfileModal();
+        }, 1500);
+      } else {
+        errorEl.textContent = '❌ ' + (result.error || 'Ошибка сохранения');
+        errorEl.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(err) {
+      errorEl.textContent = 'Ошибка: ' + err;
+      errorEl.style.display = 'block';
+    })
+    .saveProfile(currentUser ? currentUser.login : '', surname, name, patronymic, phone, birthdate);
 }
 
 // ============================================
