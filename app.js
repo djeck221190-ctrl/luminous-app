@@ -1,4 +1,4 @@
-// app.js - ПОЛНАЯ ВЕРСИЯ ДЛЯ GOOGLE APPS SCRIPT (БЕЗ FIREBASE)
+// app.js - ПОЛНАЯ ВЕРСИЯ ДЛЯ FIREBASE
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
@@ -68,6 +68,10 @@ function resetSessionTimer() {
 document.addEventListener('click', resetSessionTimer);
 document.addEventListener('keydown', resetSessionTimer);
 document.addEventListener('scroll', resetSessionTimer);
+
+function generateId() {
+  return 'TXN' + new Date().getTime() + Math.random().toString(36).substr(2, 6);
+}
 
 // ============================================
 // ТЕМА И РЕЖИМЫ
@@ -170,7 +174,7 @@ function toggleCompactMode() {
 }
 
 // ============================================
-// АВТОРИЗАЦИЯ (GOOGLE APPS SCRIPT)
+// АВТОРИЗАЦИЯ (FIREBASE)
 // ============================================
 function showRegister() {
   document.getElementById('loginForm').style.display = 'none';
@@ -186,7 +190,7 @@ function showLogin() {
   document.getElementById('regSuccess').style.display = 'none';
 }
 
-function register() {
+async function register() {
   var login = document.getElementById('regLogin').value.trim();
   var password = document.getElementById('regPassword').value;
   var phone = document.getElementById('regPhone').value.trim();
@@ -216,27 +220,36 @@ function register() {
     return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
-        successEl.style.display = 'block';
-        setTimeout(function() {
-          showLogin();
-          document.getElementById('loginInput').value = login;
-          document.getElementById('passwordInput').value = '';
-          document.getElementById('passwordInput').focus();
-        }, 1500);
-      } else {
-        errorEl.textContent = '❌ ' + (result.error || 'Ошибка регистрации');
-        errorEl.style.display = 'block';
-      }
-    })
-    .withFailureHandler(function(err) {
-      errorEl.textContent = 'Ошибка соединения: ' + err;
+  try {
+    var checkDoc = await db.collection('users').doc(login).get();
+    if (checkDoc.exists) {
+      errorEl.textContent = 'Пользователь с таким логином уже существует';
       errorEl.style.display = 'block';
-    })
-    .registerUser(login, password, phone);
+      return;
+    }
+
+    await db.collection('users').doc(login).set({
+      login: login,
+      password: password,
+      phone: phone,
+      role: 'Пользователь',
+      active: true,
+      color: '#6c5ce7',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    successEl.textContent = '✅ Регистрация успешна! Теперь войдите.';
+    successEl.style.display = 'block';
+    setTimeout(function() {
+      showLogin();
+      document.getElementById('loginInput').value = login;
+      document.getElementById('passwordInput').value = '';
+      document.getElementById('passwordInput').focus();
+    }, 1500);
+  } catch (error) {
+    errorEl.textContent = '❌ ' + error.message;
+    errorEl.style.display = 'block';
+  }
 }
 
 function showLoginError(message) {
@@ -249,7 +262,7 @@ function showLoginError(message) {
   }, 400);
 }
 
-function checkLogin() {
+async function checkLogin() {
   var login = document.getElementById('loginInput').value.trim();
   var password = document.getElementById('passwordInput').value;
   var errorEl = document.getElementById('loginError');
@@ -261,10 +274,21 @@ function checkLogin() {
     return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result && result.success) {
-        currentUser = result.user;
+  try {
+    var userDoc = await db.collection('users').doc(login).get();
+    
+    if (userDoc.exists) {
+      var userData = userDoc.data();
+      
+      if (userData.active !== false && userData.password === password) {
+        currentUser = {
+          id: userDoc.id,
+          login: userData.login,
+          phone: userData.phone || '',
+          role: userData.role || 'Пользователь',
+          color: userData.color || '#6c5ce7'
+        };
+        
         localStorage.setItem('luminous_session', JSON.stringify({ 
           user: currentUser, 
           timestamp: Date.now() 
@@ -285,16 +309,19 @@ function checkLogin() {
             document.getElementById('adminPanel').style.display = 'none';
           }
         }, 500);
-      } else {
-        showLoginError(result.error || 'Неверный логин или пароль');
+      } else if (userData.password !== password) {
+        showLoginError('Неверный пароль');
         document.getElementById('passwordInput').value = '';
         document.getElementById('passwordInput').focus();
+      } else {
+        showLoginError('Пользователь деактивирован');
       }
-    })
-    .withFailureHandler(function(err) {
-      showLoginError('Ошибка соединения: ' + err);
-    })
-    .loginUser(login, password);
+    } else {
+      showLoginError('Пользователь с таким логином не найден');
+    }
+  } catch (error) {
+    showLoginError('Ошибка: ' + error.message);
+  }
 }
 
 function updateUserDisplay() {
@@ -302,76 +329,16 @@ function updateUserDisplay() {
     phoneEl = document.getElementById('userPhone'),
     badgeEl = document.getElementById('userRoleDisplay');
   if (currentUser) {
-    google.script.run
-      .withSuccessHandler(function(profile) {
-        if (profile && profile.surname && profile.name) {
-          var fullName = profile.surname + ' ' + profile.name;
-          if (profile.patronymic) fullName += ' ' + profile.patronymic;
-          fullNameEl.textContent = fullName;
-          phoneEl.textContent = profile.phone || '+7';
-          localStorage.setItem('luminous_user_profile', JSON.stringify(profile));
-        } else {
-          var saved = localStorage.getItem('luminous_user_profile');
-          if (saved) {
-            try {
-              var p = JSON.parse(saved);
-              if (p.surname && p.name) {
-                var fullName = p.surname + ' ' + p.name;
-                if (p.patronymic) fullName += ' ' + p.patronymic;
-                fullNameEl.textContent = fullName;
-                phoneEl.textContent = p.phone || '+7';
-              } else {
-                fullNameEl.textContent = currentUser.login;
-                phoneEl.textContent = '+7';
-              }
-            } catch (e) {
-              fullNameEl.textContent = currentUser.login;
-              phoneEl.textContent = '+7';
-            }
-          } else {
-            fullNameEl.textContent = currentUser.login;
-            phoneEl.textContent = '+7';
-          }
-        }
-        if (currentUser.role && currentUser.role !== 'Пользователь') {
-          badgeEl.style.display = 'inline-block';
-          badgeEl.textContent = currentUser.role;
-          badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
-        } else {
-          badgeEl.style.display = 'none';
-        }
-      })
-      .withFailureHandler(function() {
-        var saved = localStorage.getItem('luminous_user_profile');
-        if (saved) {
-          try {
-            var p = JSON.parse(saved);
-            if (p.surname && p.name) {
-              var fullName = p.surname + ' ' + p.name;
-              if (p.patronymic) fullName += ' ' + p.patronymic;
-              fullNameEl.textContent = fullName;
-              phoneEl.textContent = p.phone || '+7';
-            } else {
-              fullNameEl.textContent = currentUser.login;
-              phoneEl.textContent = '+7';
-            }
-          } catch (e) {
-            fullNameEl.textContent = currentUser.login;
-            phoneEl.textContent = '+7';
-          }
-        } else {
-          fullNameEl.textContent = currentUser.login;
-          phoneEl.textContent = '+7';
-        }
-        if (currentUser.role && currentUser.role !== 'Пользователь') {
-          badgeEl.style.display = 'inline-block';
-          badgeEl.textContent = currentUser.role;
-          badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
-        } else {
-          badgeEl.style.display = 'none';
-        }
-      })
-      .getProfile(currentUser.login);
+    fullNameEl.textContent = currentUser.login;
+    phoneEl.textContent = currentUser.phone ? '+7' + currentUser.phone : '+7';
+    
+    if (currentUser.role && currentUser.role !== 'Пользователь') {
+      badgeEl.style.display = 'inline-block';
+      badgeEl.textContent = currentUser.role;
+      badgeEl.className = 'role-badge ' + currentUser.role.toLowerCase();
+    } else {
+      badgeEl.style.display = 'none';
+    }
   } else {
     fullNameEl.textContent = 'Пользователь';
     phoneEl.textContent = '+7';
@@ -380,7 +347,7 @@ function updateUserDisplay() {
 }
 
 // ============================================
-// ВОССТАНОВЛЕНИЕ ПАРОЛЯ (GOOGLE APPS SCRIPT)
+// ВОССТАНОВЛЕНИЕ ПАРОЛЯ (FIREBASE)
 // ============================================
 function showForgotPassword() {
   document.getElementById('forgotModal').classList.add('active');
@@ -397,7 +364,7 @@ function closeForgotModal() {
   document.getElementById('forgotModal').classList.remove('active');
 }
 
-function checkForgotPhone() {
+async function checkForgotPhone() {
   var phone = document.getElementById('forgotPhone').value.trim();
   var resultDiv = document.getElementById('forgotResult');
   var userDataDiv = document.getElementById('forgotUserData');
@@ -416,27 +383,29 @@ function checkForgotPhone() {
     return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(user) {
-      if (user) {
-        resultDiv.innerHTML = '✅ Пользователь найден!';
-        userDataDiv.innerHTML = '👤 Логин: <strong>' + user.login + '</strong><br>🔒 Пароль: <strong>' + user.password + '</strong>';
-        userDataDiv.style.display = 'block';
-        newPassSection.style.display = 'block';
-        document.getElementById('forgotNewPassword').value = '';
-        document.getElementById('forgotNewPassword').focus();
-        window.forgotLogin = user.login;
-      } else {
-        resultDiv.innerHTML = '❌ Пользователь с таким номером телефона не найден';
-      }
-    })
-    .withFailureHandler(function(err) {
-      resultDiv.innerHTML = 'Ошибка: ' + err;
-    })
-    .getUserByPhoneOnly(phone);
+  try {
+    var snapshot = await db.collection('users')
+      .where('phone', '==', phone)
+      .get();
+    
+    if (!snapshot.empty) {
+      var userData = snapshot.docs[0].data();
+      resultDiv.innerHTML = '✅ Пользователь найден!';
+      userDataDiv.innerHTML = '👤 Логин: <strong>' + userData.login + '</strong><br>🔒 Пароль: <strong>' + userData.password + '</strong>';
+      userDataDiv.style.display = 'block';
+      newPassSection.style.display = 'block';
+      document.getElementById('forgotNewPassword').value = '';
+      document.getElementById('forgotNewPassword').focus();
+      window.forgotLogin = userData.login;
+    } else {
+      resultDiv.innerHTML = '❌ Пользователь с таким номером телефона не найден';
+    }
+  } catch (error) {
+    resultDiv.innerHTML = 'Ошибка: ' + error.message;
+  }
 }
 
-function resetForgotPassword() {
+async function resetForgotPassword() {
   var newPassword = document.getElementById('forgotNewPassword').value;
   var errorEl = document.getElementById('forgotError');
   var successEl = document.getElementById('forgotSuccess');
@@ -457,26 +426,22 @@ function resetForgotPassword() {
     return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result) {
-        successEl.textContent = '✅ Пароль успешно изменён! Теперь войдите с новым паролем.';
-        successEl.style.display = 'block';
-        setTimeout(function() {
-          closeForgotModal();
-          document.getElementById('loginInput').value = login;
-          document.getElementById('passwordInput').focus();
-        }, 1500);
-      } else {
-        errorEl.textContent = '❌ Ошибка при смене пароля';
-        errorEl.style.display = 'block';
-      }
-    })
-    .withFailureHandler(function(err) {
-      errorEl.textContent = 'Ошибка: ' + err;
-      errorEl.style.display = 'block';
-    })
-    .updateUserPassword(login, newPassword);
+  try {
+    await db.collection('users').doc(login).update({
+      password: newPassword
+    });
+    
+    successEl.textContent = '✅ Пароль успешно изменён! Теперь войдите с новым паролем.';
+    successEl.style.display = 'block';
+    setTimeout(function() {
+      closeForgotModal();
+      document.getElementById('loginInput').value = login;
+      document.getElementById('passwordInput').focus();
+    }, 1500);
+  } catch (error) {
+    errorEl.textContent = 'Ошибка: ' + error.message;
+    errorEl.style.display = 'block';
+  }
 }
 
 // ============================================
@@ -510,7 +475,7 @@ function toggleEmojiPicker(inputId) {
 }
 
 // ============================================
-// ДИЗАЙНЕР ОКОН (GOOGLE APPS SCRIPT)
+// ДИЗАЙНЕР ОКОН (LOCALSTORAGE)
 // ============================================
 function showModalDesigner() {
   document.getElementById('modalDesigner').classList.add('active');
@@ -524,18 +489,14 @@ function closeModalDesigner() {
 function loadDesignerSettings() {
   var windowSelect = document.getElementById('designerWindowSelect');
   var selected = windowSelect.value;
-  google.script.run
-    .withSuccessHandler(function(settings) {
-      var s = settings[selected] || settings['Добавить транзакцию'];
-      if (s) {
-        document.getElementById('designerName').value = selected;
-        document.getElementById('designerWidth').value = s.width || 460;
-        document.getElementById('designerHeight').value = s.height || 600;
-        document.getElementById('designerOrder').value = s.fieldOrder || '';
-        updateDesignerPreview();
-      }
-    })
-    .getModalSettings();
+  var settings = JSON.parse(localStorage.getItem('luminous_modal_settings') || '{}');
+  var s = settings[selected] || { width: 460, height: 600, fieldOrder: 'Дата,Описание,Сумма,Тип,Категория,Счет,Банк' };
+  document.getElementById('designerName').value = selected;
+  document.getElementById('designerWidth').value = s.width || 460;
+  document.getElementById('designerHeight').value = s.height || 600;
+  document.getElementById('designerOrder').value = s.fieldOrder || '';
+  updateDesignerPreview();
+  
   windowSelect.onchange = function () {
     loadDesignerSettings();
   };
@@ -559,22 +520,15 @@ function applyDesignerSettings() {
 
 function saveDesignerSettings() {
   var name = document.getElementById('designerName').value;
-  var settings = {};
+  var settings = JSON.parse(localStorage.getItem('luminous_modal_settings') || '{}');
   settings[name] = {
     width: parseInt(document.getElementById('designerWidth').value) || 460,
     height: parseInt(document.getElementById('designerHeight').value) || 600,
     fieldOrder: document.getElementById('designerOrder').value || ''
   };
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result) {
-        showToast('✅ Настройки сохранены!', 'Успешно');
-        closeModalDesigner();
-      } else {
-        showToast('❌ Ошибка сохранения', 'Ошибка');
-      }
-    })
-    .updateModalSettings(settings);
+  localStorage.setItem('luminous_modal_settings', JSON.stringify(settings));
+  showToast('✅ Настройки сохранены!', 'Успешно');
+  closeModalDesigner();
 }
 
 function initDesignerResize() {
@@ -610,7 +564,7 @@ function initDesignerResize() {
 }
 
 // ============================================
-// РЕДАКТИРОВАНИЕ ДАШБОРДА
+// РЕДАКТИРОВАНИЕ ДАШБОРДА (LOCALSTORAGE)
 // ============================================
 function toggleEditMode() {
   editModeActive = !editModeActive;
@@ -711,31 +665,23 @@ function getCurrentLayout() {
 
 function saveLayout() {
   var layout = getCurrentLayout();
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result) {
-        savedLayout = layout;
-        showToast('✅ Расположение сохранено!', 'Успешно');
-      }
-    })
-    .saveDashboardLayout(layout);
+  localStorage.setItem('luminous_layout', JSON.stringify(layout));
+  savedLayout = layout;
+  showToast('✅ Расположение сохранено!', 'Успешно');
 }
 
 function loadSavedLayout() {
-  google.script.run
-    .withSuccessHandler(function(layout) {
-      if (Object.keys(layout).length > 0) {
-        savedLayout = layout;
-        for (var id in layout) {
-          var el = document.getElementById(id);
-          if (el) {
-            if (layout[id].width) el.style.width = layout[id].width + 'px';
-            if (layout[id].height) el.style.height = layout[id].height + 'px';
-          }
-        }
+  var layout = JSON.parse(localStorage.getItem('luminous_layout') || '{}');
+  if (Object.keys(layout).length > 0) {
+    savedLayout = layout;
+    for (var id in layout) {
+      var el = document.getElementById(id);
+      if (el) {
+        if (layout[id].width) el.style.width = layout[id].width + 'px';
+        if (layout[id].height) el.style.height = layout[id].height + 'px';
       }
-    })
-    .getDashboardLayout();
+    }
+  }
 }
 
 function undoLayout() {
@@ -876,7 +822,7 @@ function resetUnifiedFiltersCat() {
 }
 
 // ============================================
-// ЗАГРУЗКА ДАННЫХ (GOOGLE APPS SCRIPT)
+// ЗАГРУЗКА ДАННЫХ (FIREBASE)
 // ============================================
 function refreshData() {
   loadData();
@@ -887,60 +833,76 @@ function showLoading() {
   document.getElementById('dashboardYearlyAnalytics').innerHTML = '<div class="loading-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
 }
 
-function loadData() {
+async function loadData() {
   showLoading();
   
-  var activeFilters = { period: 'all', category: 'all', bank: 'all', type: 'all', search: '', dateFrom: '', dateTo: '' };
-  var activeSection = document.querySelector('.section.active');
-  if (activeSection) {
-    var id = activeSection.id.replace('sec-', '');
-    if (id === 'dashboard') {
-      activeFilters.period = document.getElementById('unifiedPeriod').value;
-      activeFilters.category = document.getElementById('unifiedCategory').value;
-      activeFilters.bank = document.getElementById('unifiedBank').value;
-      activeFilters.type = document.getElementById('unifiedType').value;
-      activeFilters.search = document.getElementById('unifiedSearch').value;
-      activeFilters.dateFrom = document.getElementById('unifiedDateFrom').value;
-      activeFilters.dateTo = document.getElementById('unifiedDateTo').value;
-    } else if (id === 'transactions') {
-      activeFilters.period = document.getElementById('unifiedPeriodTxn').value;
-      activeFilters.category = document.getElementById('unifiedCategoryTxn').value;
-      activeFilters.bank = document.getElementById('unifiedBankTxn').value;
-      activeFilters.type = document.getElementById('unifiedTypeTxn').value;
-      activeFilters.search = document.getElementById('unifiedSearchTxn').value;
-      activeFilters.dateFrom = document.getElementById('unifiedDateFromTxn').value;
-      activeFilters.dateTo = document.getElementById('unifiedDateToTxn').value;
-    } else if (id === 'categories') {
-      activeFilters.period = document.getElementById('unifiedPeriodCat').value;
-      activeFilters.type = document.getElementById('unifiedTypeCat').value;
-      activeFilters.search = document.getElementById('unifiedSearchCat').value;
-      activeFilters.dateFrom = document.getElementById('unifiedDateFromCat').value;
-      activeFilters.dateTo = document.getElementById('unifiedDateToCat').value;
-    }
+  if (!currentUser || !currentUser.login) {
+    showToast('Необходимо войти', 'Ошибка');
+    return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(d) {
-      if (d.error) { 
-        console.error('Data error:', d.message); 
-        return; 
-      }
-      allData = d;
-      allTx = d.transactions || [];
-      txnAll = allTx.slice();
-      populateSelects(d);
-      updateUI(d);
-      updateCategoryUI(d);
-      updateAllCategoriesList(d);
-      updateDashboardYearly(d);
-      populateYearlyFilter(d);
-      loadSavedLayout();
-    })
-    .withFailureHandler(function(err) {
-      console.error('Load error:', err);
-      showToast('Ошибка загрузки: ' + err, 'Ошибка');
-    })
-    .getAppData(activeFilters);
+  try {
+    var snapshot = await db.collection('transactions')
+      .where('userId', '==', currentUser.login)
+      .orderBy('date', 'desc')
+      .get();
+    
+    var tx = [];
+    snapshot.forEach(function(doc) {
+      tx.push({ id: doc.id, ...doc.data() });
+    });
+    allTx = tx;
+    allData = processData(tx);
+    
+    var catSnapshot = await db.collection('categories')
+      .where('userId', '==', currentUser.login)
+      .get();
+    
+    var categories = [];
+    catSnapshot.forEach(function(doc) {
+      categories.push(doc.data().name);
+    });
+    if (categories.length > 0) {
+      allData.categories = categories;
+    }
+    
+    populateSelects(allData);
+    updateUI(allData);
+    updateCategoryUI(allData);
+    updateAllCategoriesList(allData);
+    updateDashboardYearly(allData);
+    populateYearlyFilter(allData);
+    loadSavedLayout();
+  } catch (error) {
+    console.error('Load error:', error);
+    showToast('Ошибка загрузки данных: ' + error.message, 'Ошибка');
+    allTx = [];
+    allData = getEmptyData();
+  }
+}
+
+function getEmptyData() {
+  return {
+    transactions: [],
+    totalIncome: 0,
+    totalExpense: 0,
+    balance: 0,
+    count: 0,
+    monthLabels: [],
+    monthIncome: [],
+    monthExpense: [],
+    monthDelta: [],
+    categoryIncome: {},
+    categoryExpense: {},
+    bankData: {},
+    bankLabels: [],
+    bankIncomeData: [],
+    bankExpenseData: [],
+    years: [],
+    categories: ['Продукты', 'Транспорт', 'Развлечения'],
+    accounts: ['Основной', 'Сберегательный'],
+    yearlyData: {}
+  };
 }
 
 // ============================================
@@ -1095,39 +1057,21 @@ function populateSelects(d) {
 
   var mAcc = document.getElementById('mAcc');
   mAcc.innerHTML = '';
-  if (d.settings && d.settings.accounts) {
-    d.settings.accounts.forEach(function (v) {
-      var o = document.createElement('option');
-      o.value = v;
-      o.text = v;
-      mAcc.appendChild(o);
-    });
-  } else {
-    ['Основной', 'Сберегательный', 'Кредитный'].forEach(function (v) {
-      var o = document.createElement('option');
-      o.value = v;
-      o.text = v;
-      mAcc.appendChild(o);
-    });
-  }
+  ['Основной', 'Сберегательный', 'Кредитный'].forEach(function (v) {
+    var o = document.createElement('option');
+    o.value = v;
+    o.text = v;
+    mAcc.appendChild(o);
+  });
 
   var mBank = document.getElementById('mBank');
   mBank.innerHTML = '';
-  if (d.settings && d.settings.banks) {
-    d.settings.banks.forEach(function (v) {
-      var o = document.createElement('option');
-      o.value = v;
-      o.text = v;
-      mBank.appendChild(o);
-    });
-  } else {
-    ['Сбербанк', 'Т-Банк', 'Альфа-Банк', 'ВТБ', 'Другой'].forEach(function (v) {
-      var o = document.createElement('option');
-      o.value = v;
-      o.text = v;
-      mBank.appendChild(o);
-    });
-  }
+  ['Сбербанк', 'Т-Банк', 'Альфа-Банк', 'ВТБ', 'Другой'].forEach(function (v) {
+    var o = document.createElement('option');
+    o.value = v;
+    o.text = v;
+    mBank.appendChild(o);
+  });
 }
 
 function populateYearlyFilter(d) {
@@ -1494,7 +1438,7 @@ function toggleAllCategories() {
 }
 
 // ============================================
-// КАТЕГОРИИ (CRUD)
+// КАТЕГОРИИ (CRUD - FIREBASE)
 // ============================================
 function showEditCategoryModal(categoryName) {
   var catData = allData ? allData.categories || [] : [];
@@ -1516,7 +1460,7 @@ function closeEditCategoryModal() {
   document.getElementById('editCategoryModal').classList.remove('active');
 }
 
-function updateCategory() {
+async function updateCategory() {
   var oldName = document.getElementById('editCatOldName').value;
   var name = document.getElementById('editCatName').value.trim();
   var emoji = document.getElementById('editCatEmoji').value.trim() || '📌';
@@ -1533,42 +1477,63 @@ function updateCategory() {
     return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        successEl.style.display = 'block';
-        setTimeout(function() {
-          closeEditCategoryModal();
-          refreshData();
-        }, 1000);
-      } else {
-        errorEl.textContent = result.error || 'Ошибка обновления';
-        errorEl.style.display = 'block';
-      }
-    })
-    .withFailureHandler(function(err) {
-      errorEl.textContent = 'Ошибка: ' + err;
+  try {
+    var snapshot = await db.collection('categories')
+      .where('userId', '==', currentUser.login)
+      .where('name', '==', oldName)
+      .get();
+    
+    if (!snapshot.empty) {
+      await snapshot.docs[0].ref.update({
+        name: name,
+        emoji: emoji,
+        type: type,
+        sub: sub
+      });
+      
+      var txnSnapshot = await db.collection('transactions')
+        .where('userId', '==', currentUser.login)
+        .where('category', '==', oldName)
+        .get();
+      
+      txnSnapshot.forEach(function(doc) {
+        doc.ref.update({ category: name });
+      });
+      
+      successEl.style.display = 'block';
+      setTimeout(function() {
+        closeEditCategoryModal();
+        refreshData();
+      }, 1000);
+    } else {
+      errorEl.textContent = 'Категория не найдена';
       errorEl.style.display = 'block';
-    })
-    .updateCategory(oldName, name, emoji, type, sub);
+    }
+  } catch (error) {
+    errorEl.textContent = 'Ошибка: ' + error.message;
+    errorEl.style.display = 'block';
+  }
 }
 
-function deleteCategory(name) {
+async function deleteCategory(name) {
   if (!confirm('Удалить категорию "' + name + '" ?')) return;
   
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        showToast('Категория удалена', 'Успешно');
-        refreshData();
-      } else {
-        showToast(result.error || 'Ошибка удаления', 'Ошибка');
-      }
-    })
-    .withFailureHandler(function(err) {
-      showToast('Ошибка: ' + err, 'Ошибка');
-    })
-    .deleteCategory(name);
+  try {
+    var snapshot = await db.collection('categories')
+      .where('userId', '==', currentUser.login)
+      .where('name', '==', name)
+      .get();
+    
+    if (!snapshot.empty) {
+      await snapshot.docs[0].ref.delete();
+      showToast('Категория удалена', 'Успешно');
+      refreshData();
+    } else {
+      showToast('Категория не найдена', 'Ошибка');
+    }
+  } catch (error) {
+    showToast('Ошибка: ' + error.message, 'Ошибка');
+  }
 }
 
 // ============================================
@@ -1831,7 +1796,7 @@ function toggleYearDetailDashboard(row) {
 }
 
 // ============================================
-// СРАВНЕНИЕ ПЕРИОДОВ
+// СРАВНЕНИЕ ПЕРИОДОВ (FIREBASE)
 // ============================================
 function comparePeriods() {
   var period1 = document.getElementById('comparePeriod1').value,
@@ -1840,25 +1805,45 @@ function comparePeriods() {
     dateTo1 = document.getElementById('compareDateTo1').value;
   var dateFrom2 = document.getElementById('compareDateFrom2').value,
     dateTo2 = document.getElementById('compareDateTo2').value;
-  var filters1 = { period: period1, dateFrom: dateFrom1, dateTo: dateTo1, category: 'all', bank: 'all', type: 'all', search: '' };
-  var filters2 = { period: period2, dateFrom: dateFrom2, dateTo: dateTo2, category: 'all', bank: 'all', type: 'all', search: '' };
-  document.getElementById('compareResult').innerHTML = '<div class="loading-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>';
   
-  google.script.run
-    .withSuccessHandler(function(d1) {
-      google.script.run
-        .withSuccessHandler(function(d2) {
-          renderCompareResult(d1, d2, period1, period2);
-        })
-        .withFailureHandler(function(err) {
-          showToast('Ошибка загрузки данных 2: ' + err, 'Ошибка');
-        })
-        .getAppData(filters2);
-    })
-    .withFailureHandler(function(err) {
-      showToast('Ошибка загрузки данных 1: ' + err, 'Ошибка');
-    })
-    .getAppData(filters1);
+  var d1 = getFilteredData(period1, dateFrom1, dateTo1);
+  var d2 = getFilteredData(period2, dateFrom2, dateTo2);
+  renderCompareResult(d1, d2, period1, period2);
+}
+
+function getFilteredData(period, dateFrom, dateTo) {
+  if (!allData || !allData.transactions) {
+    return getEmptyData();
+  }
+  
+  var filtered = allData.transactions.filter(function(t) {
+    var dateObj = new Date(t.date.split('.').reverse().join('-'));
+    var now = new Date();
+    
+    if (period === 'currentYear') {
+      if (dateObj.getFullYear() !== now.getFullYear()) return false;
+    } else if (period === 'currentMonth') {
+      if (dateObj.getFullYear() !== now.getFullYear() || dateObj.getMonth() !== now.getMonth()) return false;
+    } else if (period === 'lastMonth') {
+      var lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      if (dateObj.getFullYear() !== lastMonth.getFullYear() || dateObj.getMonth() !== lastMonth.getMonth()) return false;
+    } else if (period === '6months') {
+      var sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+      if (dateObj < sixMonthsAgo) return false;
+    } else if (period === '12months') {
+      var twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+      if (dateObj < twelveMonthsAgo) return false;
+    } else if (period === 'custom') {
+      if (dateFrom && dateTo) {
+        var from = new Date(dateFrom);
+        var to = new Date(dateTo);
+        if (dateObj < from || dateObj > to) return false;
+      }
+    }
+    return true;
+  });
+  
+  return processData(filtered);
 }
 
 function renderCompareResult(d1, d2, label1, label2) {
@@ -2153,7 +2138,7 @@ function showKpiDetail(type) {
 }
 
 // ============================================
-// ТРАНЗАКЦИИ (CRUD)
+// ТРАНЗАКЦИИ (CRUD - FIREBASE)
 // ============================================
 function showAddModal() {
   document.getElementById('addModal').classList.add('active');
@@ -2208,25 +2193,19 @@ function editTransaction(id) {
   }, 100);
 }
 
-function deleteTransaction(id) {
+async function deleteTransaction(id) {
   if (!confirm('Удалить эту транзакцию?')) return;
   
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        showToast('Транзакция удалена', 'Успешно');
-        refreshData();
-      } else {
-        showToast(result.error || 'Ошибка удаления', 'Ошибка');
-      }
-    })
-    .withFailureHandler(function(err) {
-      showToast('Ошибка: ' + err, 'Ошибка');
-    })
-    .deleteTransaction(id);
+  try {
+    await db.collection('transactions').doc(id).delete();
+    showToast('Транзакция удалена', 'Успешно');
+    refreshData();
+  } catch (error) {
+    showToast('Ошибка: ' + error.message, 'Ошибка');
+  }
 }
 
-function submitTx() {
+async function submitTx() {
   var id = document.getElementById('editId').value;
   var date = document.getElementById('mDate').value;
   var desc = document.getElementById('mDesc').value.trim();
@@ -2254,57 +2233,49 @@ function submitTx() {
     return;
   }
 
-  // Преобразуем дату в формат DD.MM.YYYY
   var dateObj = new Date(date);
   var formattedDate = dateObj.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  var monthYear = ('0' + (dateObj.getMonth() + 1)).slice(-2) + '.' + dateObj.getFullYear();
+  var year = dateObj.getFullYear();
+  var finalAmount = type === 'Расход' ? -Math.abs(finalAmt) : Math.abs(finalAmt);
 
-  if (id) {
-    // Обновление
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result.success) {
-          successEl.textContent = '✅ Транзакция обновлена!';
-          successEl.style.display = 'block';
-          setTimeout(function() {
-            closeModal();
-            refreshData();
-          }, 800);
-        } else {
-          errorEl.textContent = result.error || 'Ошибка обновления';
-          errorEl.style.display = 'block';
-        }
-      })
-      .withFailureHandler(function(err) {
-        errorEl.textContent = 'Ошибка: ' + err;
-        errorEl.style.display = 'block';
-      })
-      .updateTransaction(id, formattedDate, desc, finalAmt, type, cat, acc, bank);
-  } else {
-    // Добавление
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result.success) {
-          successEl.textContent = '✅ Транзакция добавлена!';
-          successEl.style.display = 'block';
-          setTimeout(function() {
-            closeModal();
-            refreshData();
-          }, 800);
-        } else {
-          errorEl.textContent = result.error || 'Ошибка сохранения';
-          errorEl.style.display = 'block';
-        }
-      })
-      .withFailureHandler(function(err) {
-        errorEl.textContent = 'Ошибка: ' + err;
-        errorEl.style.display = 'block';
-      })
-      .saveTransaction(formattedDate, desc, finalAmt, type, cat, acc, bank);
+  var txData = {
+    date: formattedDate,
+    description: desc,
+    amount: finalAmount,
+    type: type,
+    category: cat || 'Без категории',
+    account: acc || 'Основной',
+    bank: bank || 'Сбербанк',
+    monthYear: monthYear,
+    year: year,
+    userId: currentUser.login,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try {
+    if (id) {
+      await db.collection('transactions').doc(id).update(txData);
+      successEl.textContent = '✅ Транзакция обновлена!';
+    } else {
+      var docRef = await db.collection('transactions').add(txData);
+      txData.id = docRef.id;
+      successEl.textContent = '✅ Транзакция добавлена!';
+    }
+    successEl.style.display = 'block';
+    
+    setTimeout(function() {
+      closeModal();
+      refreshData();
+    }, 800);
+  } catch (error) {
+    errorEl.textContent = 'Ошибка: ' + error.message;
+    errorEl.style.display = 'block';
   }
 }
 
 // ============================================
-// ДОБАВЛЕНИЕ КАТЕГОРИИ
+// ДОБАВЛЕНИЕ КАТЕГОРИИ (FIREBASE)
 // ============================================
 function showAddCategoryModal() {
   document.getElementById('addCategoryModal').classList.add('active');
@@ -2320,7 +2291,7 @@ function closeAddCategoryModal() {
   document.getElementById('addCategoryModal').classList.remove('active');
 }
 
-function addCategory() {
+async function addCategory() {
   var name = document.getElementById('newCatName').value.trim();
   var emoji = document.getElementById('newCatEmoji').value.trim() || '📌';
   var type = document.getElementById('newCatType').value;
@@ -2336,29 +2307,41 @@ function addCategory() {
     return;
   }
 
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        successEl.textContent = '✅ Категория добавлена!';
-        successEl.style.display = 'block';
-        setTimeout(function() {
-          closeAddCategoryModal();
-          refreshData();
-        }, 1000);
-      } else {
-        errorEl.textContent = '❌ ' + (result.error || 'Ошибка добавления');
-        errorEl.style.display = 'block';
-      }
-    })
-    .withFailureHandler(function(err) {
-      errorEl.textContent = 'Ошибка: ' + err;
+  try {
+    var snapshot = await db.collection('categories')
+      .where('userId', '==', currentUser.login)
+      .where('name', '==', name)
+      .get();
+    
+    if (!snapshot.empty) {
+      errorEl.textContent = 'Категория с таким названием уже существует';
       errorEl.style.display = 'block';
-    })
-    .addCategory(name, emoji, type, sub);
+      return;
+    }
+
+    await db.collection('categories').add({
+      name: name,
+      emoji: emoji,
+      type: type,
+      sub: sub,
+      userId: currentUser.login,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    successEl.textContent = '✅ Категория добавлена!';
+    successEl.style.display = 'block';
+    setTimeout(function() {
+      closeAddCategoryModal();
+      refreshData();
+    }, 1000);
+  } catch (error) {
+    errorEl.textContent = 'Ошибка: ' + error.message;
+    errorEl.style.display = 'block';
+  }
 }
 
 // ============================================
-// ПРОФИЛЬ
+// ПРОФИЛЬ (FIREBASE)
 // ============================================
 function capitalizeFirst(input) {
   var val = input.value.replace(/[^а-яА-ЯёЁ]/g, '');
@@ -2396,40 +2379,43 @@ function openProfileModal() {
     yearSel.appendChild(opt);
   }
   
-  google.script.run
-    .withSuccessHandler(function(profile) {
-      if (profile) {
-        document.getElementById('pfSurname').value = profile.surname || '';
-        document.getElementById('pfName').value = profile.name || '';
-        document.getElementById('pfPatronymic').value = profile.patronymic || '';
-        var phoneVal = profile.phone ? profile.phone.replace('+7', '') : '';
-        document.getElementById('pfPhone').value = phoneVal;
-        if (profile.birthdate) {
-          var parts = profile.birthdate.split('.');
-          if (parts.length === 3) {
-            document.getElementById('pfDay').value = parts[0];
-            document.getElementById('pfMonth').value = parts[1];
-            document.getElementById('pfYear').value = parts[2];
-          }
+  loadProfileFromFirebase();
+}
+
+async function loadProfileFromFirebase() {
+  try {
+    var userDoc = await db.collection('users').doc(currentUser.login).get();
+    if (userDoc.exists) {
+      var data = userDoc.data();
+      document.getElementById('pfSurname').value = data.surname || '';
+      document.getElementById('pfName').value = data.name || '';
+      document.getElementById('pfPatronymic').value = data.patronymic || '';
+      var phoneVal = data.phone ? data.phone : '';
+      document.getElementById('pfPhone').value = phoneVal;
+      if (data.birthdate) {
+        var parts = data.birthdate.split('.');
+        if (parts.length === 3) {
+          document.getElementById('pfDay').value = parts[0];
+          document.getElementById('pfMonth').value = parts[1];
+          document.getElementById('pfYear').value = parts[2];
         }
-        document.getElementById('pfSaveBtn').style.display = 'none';
-        document.getElementById('pfEditBtn').style.display = 'inline-block';
-        document.getElementById('pfSuccess').style.display = 'none';
-        document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
-          el.disabled = true;
-        });
-      } else {
-        document.getElementById('pfSaveBtn').style.display = 'inline-block';
-        document.getElementById('pfEditBtn').style.display = 'none';
-        document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
-          el.disabled = false;
-        });
       }
-    })
-    .withFailureHandler(function(err) {
-      showToast('Ошибка загрузки данных: ' + err, 'Ошибка');
-    })
-    .getProfile(currentUser ? currentUser.login : '');
+      document.getElementById('pfSaveBtn').style.display = 'none';
+      document.getElementById('pfEditBtn').style.display = 'inline-block';
+      document.getElementById('pfSuccess').style.display = 'none';
+      document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
+        el.disabled = true;
+      });
+    } else {
+      document.getElementById('pfSaveBtn').style.display = 'inline-block';
+      document.getElementById('pfEditBtn').style.display = 'none';
+      document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
+        el.disabled = false;
+      });
+    }
+  } catch (error) {
+    showToast('Ошибка загрузки данных: ' + error.message, 'Ошибка');
+  }
 }
 
 function closeProfileModal() {
@@ -2445,7 +2431,7 @@ function editProfile() {
   document.getElementById('pfSuccess').style.display = 'none';
 }
 
-function saveProfile() {
+async function saveProfile() {
   var surname = document.getElementById('pfSurname').value.trim();
   var name = document.getElementById('pfName').value.trim();
   var patronymic = document.getElementById('pfPatronymic').value.trim();
@@ -2471,34 +2457,34 @@ function saveProfile() {
   var birthdate = '';
   if (day && month && year) birthdate = day + '.' + month + '.' + year;
 
-  google.script.run
-    .withSuccessHandler(function(result) {
-      if (result.success) {
-        successEl.textContent = '✅ Данные сохранены!';
-        successEl.style.display = 'block';
-        document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
-          el.disabled = true;
-        });
-        document.getElementById('pfSaveBtn').style.display = 'none';
-        document.getElementById('pfEditBtn').style.display = 'inline-block';
-        if (result.profile) {
-          localStorage.setItem('luminous_user_profile', JSON.stringify(result.profile));
-        }
-        updateUserDisplay();
-        showToast('Данные профиля сохранены', 'Успешно');
-        setTimeout(function() {
-          closeProfileModal();
-        }, 1500);
-      } else {
-        errorEl.textContent = '❌ ' + (result.error || 'Ошибка сохранения');
-        errorEl.style.display = 'block';
-      }
-    })
-    .withFailureHandler(function(err) {
-      errorEl.textContent = 'Ошибка: ' + err;
-      errorEl.style.display = 'block';
-    })
-    .saveProfile(currentUser ? currentUser.login : '', surname, name, patronymic, phone, birthdate);
+  try {
+    await db.collection('users').doc(currentUser.login).update({
+      surname: surname,
+      name: name,
+      patronymic: patronymic,
+      phone: phone,
+      birthdate: birthdate
+    });
+    
+    successEl.textContent = '✅ Данные сохранены!';
+    successEl.style.display = 'block';
+    document.querySelectorAll('#profileModal input, #profileModal select').forEach(function (el) {
+      el.disabled = true;
+    });
+    document.getElementById('pfSaveBtn').style.display = 'none';
+    document.getElementById('pfEditBtn').style.display = 'inline-block';
+    updateUserDisplay();
+    showToast('Данные профиля сохранены', 'Успешно');
+    
+    currentUser.phone = phone;
+    
+    setTimeout(function() {
+      closeProfileModal();
+    }, 1500);
+  } catch (error) {
+    errorEl.textContent = 'Ошибка: ' + error.message;
+    errorEl.style.display = 'block';
+  }
 }
 
 // ============================================
